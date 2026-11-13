@@ -25,10 +25,11 @@ main{max-width:1080px;height:100svh;margin:auto;padding:12px clamp(12px,4vw,42px
 h1{font-size:clamp(23px,4vw,34px);line-height:1.2;margin:6px 0 8px}
 p{color:#a9bfd6;margin:0 0 8px;font-size:13px}
 .view-controls,.observer,.time-controls{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:12px}
-.setup-controls{display:flex;flex-wrap:wrap;align-items:center;gap:6px 14px;font-size:13px}
-.setup-controls :is(.time-controls,.observer){gap:5px;margin:0}
+#help{text-align:center}
+.setup-controls{display:flex;justify-content:center;flex-wrap:wrap;align-items:center;gap:6px 14px;font-size:13px}
+.setup-controls :is(.time-controls,.observer){justify-content:center;gap:5px;margin:0}
 .setup-controls label{white-space:nowrap}
-.simulation-clock{text-align:right;margin:4px 0;font-size:13px;font-variant-numeric:tabular-nums}
+.simulation-clock{text-align:right;margin:4px 0;font-size:17px;font-variant-numeric:tabular-nums}
 .time-controls select{color:inherit;background:#111f33;border:1px solid #3b506b;border-radius:5px;padding:4px;font:inherit}
 .time-controls button{touch-action:manipulation}
 [hidden]{display:none!important}
@@ -39,16 +40,10 @@ p{color:#a9bfd6;margin:0 0 8px;font-size:13px}
 .inside-view canvas,.inside-view canvas:active{cursor:crosshair}
 .stage{position:relative;flex:1;min-height:220px;max-height:662px;border:1px solid #263b57;border-radius:20px;overflow:hidden;background:radial-gradient(ellipse at center,#162940,#0a1221 76%)}
 .sky-layout{flex:1;max-height:760px;display:flex;flex-direction:column;gap:6px}
-.sky-readout{display:grid;grid-template-columns:1fr 1fr;gap:6px 12px;padding:6px 10px;border:1px solid #263b57;border-radius:12px;background:#111f33;font-size:13px;font-variant-numeric:tabular-nums}
-.sky-readout small{margin:2px 0 0;font-size:11px}
-.sky-readout .rise-set{border-left:1px solid #263b57;padding-left:10px}
-@media(max-width:480px){.sky-readout{font-size:12px}.sky-readout{overflow-wrap:anywhere}}
-.sky-readout .sun{color:#ffbd4a}
-.sky-readout .moon{color:#d9c5ff}
 canvas{position:absolute;inset:0;display:block;width:100%;height:100%;max-height:660px;cursor:grab;touch-action:none}
 canvas:active{cursor:grabbing}
 .position-dot{position:absolute;z-index:1;width:9px;height:9px;border:1px solid #0a1525;border-radius:50%;background:#fff;box-shadow:0 0 0 2px #72e7ef;transform:translate(-50%,-50%);pointer-events:none}
-.coordinates{position:absolute;z-index:1;pointer-events:none;padding:6px 10px;border:1px solid #426385;border-radius:7px;background:#0a1525;color:#eaf4ff;font-size:13px;font-variant-numeric:tabular-nums;white-space:pre-line}
+.coordinates{position:absolute;z-index:1;pointer-events:none;padding:6px 10px;border:1px solid #426385;border-radius:7px;background:#0a1525;color:#eaf4ff;font-size:13px;font-variant-numeric:tabular-nums;white-space:pre-line;max-width:calc(100% - 12px);overflow-wrap:anywhere}
 .controls{position:absolute;left:12px;right:12px;top:12px;display:flex;justify-content:flex-end;flex-wrap:wrap;gap:6px;align-items:center;pointer-events:none}
 .controls button{pointer-events:auto}
 button,output{padding:4px 10px;color:inherit;background:#111f33;border:1px solid #3b506b;border-radius:7px;font:inherit}
@@ -96,34 +91,21 @@ small{display:block;color:#92a9c1;margin-top:7px}
 <div class="coordinates" id="coordinates" hidden></div>
 <div class="controls"><button type="button" id="turn-left" aria-label="왼쪽으로 회전" title="왼쪽으로 회전">↶</button><button type="button" id="turn-right" aria-label="오른쪽으로 회전" title="오른쪽으로 회전">↷</button><button type="button" id="out" aria-label="축소">−</button><output id="zoom" aria-label="확대율">100%</output><button type="button" id="in" aria-label="확대">+</button><button type="button" id="reset">초기화</button></div>
 </div>
-<aside class="sky-readout" id="sky-readout" aria-label="태양·달 위치와 출몰 시각" hidden>
-<div>
-<div class="sun" id="sky-sun"></div>
-<div class="moon" id="sky-moon"></div>
-</div>
-<div class="rise-set">
-<div class="sun" id="sun-rise-set"></div>
-<div class="moon" id="moon-rise-set"></div>
-<small>해수면의 평탄한 지평선 기준 예상 시각</small>
-</div>
-</aside>
 </div>
 <div class="legend" id="outside-legend"><span style="--color:#688bae">적경·적위 격자</span><span style="--color:#72e7ef">천구의 적도</span><span style="--color:#ffca73">황도</span><span style="--color:#c7abff">천구의 양극</span></div>
 <small id="outside-drag">좌우 드래그는 극축을 중심으로 천구를 돌립니다. 적위 +45° 이상 또는 −45° 이하인 극 부근에서 시작하면 극축의 방향을 바꿀 수 있습니다.</small>
 <small id="ephemeris"></small>
 <small id="outside-note">해와 달은 지구 중심 기준의 근사 위치입니다. 점선 테두리는 천구 뒷면에 있음을 뜻합니다.</small>
 <small id="keys">격자 숫자는 적경(h)과 적위(°)입니다. 점선은 천구의 뒷면입니다. 키보드 방향키로 회전하고, + / − 키로 크기를 조절할 수 있습니다.</small>
-<details id="inside-note" hidden><summary>하늘 지도 설명</summary><small>바깥 원은 천구의 윤곽, 안쪽 타원은 지평선입니다. 경로는 한국 시간 00:00부터 5분 간격으로 계산합니다. 금색 태양 경로는 다음 날 00:00까지, 연보라색 달 경로는 다음 날 01:00까지입니다. 궤도의 실선과 점선은 겉보기 중심 고도 0°를 기준으로 나뉩니다. 해와 달의 밝은 부분은 지평선 위에 보이는 범위만 그립니다. 겉보기 고도는 표준 대기 굴절을 적용한 추정값입니다.</small></details>
+<details id="inside-note" hidden><summary>하늘 지도 설명</summary><small>바깥 원은 천구의 윤곽, 안쪽 타원은 지평선입니다. 경로는 한국 시간 00:00부터 5분 간격으로 계산합니다. 금색 태양 경로는 다음 날 00:00까지, 연보라색 달 경로는 다음 날 01:00까지입니다. 궤도의 실선과 점선은 겉보기 중심 고도 0°를 기준으로 나뉩니다. 해와 달의 밝은 부분은 지평선 위에 보이는 범위만 그립니다. 겉보기 고도와 출몰 시각은 표준 대기와 평탄한 지평선을 가정한 추정값입니다.</small></details>
 </main>
 <script>
 'use strict';
 const canvas = document.querySelector('canvas');
 const ctx = canvas.getContext('2d');
 const ephemerisLabel = document.querySelector('#ephemeris');
-const skyReadout = document.querySelector('#sky-readout');
 const skyTime = document.querySelector('#sky-time');
-const skyAngles = ['#sky-sun','#sky-moon'].map(id => document.querySelector(id));
-const riseSetLabels = ['#sun-rise-set','#moon-rise-set'].map(id => document.querySelector(id));
+let riseSetTimes = [];
 const eventClock = new Intl.DateTimeFormat('ko-KR',{
   timeZone:'Asia/Seoul',hour:'2-digit',minute:'2-digit',hourCycle:'h23'
 });
@@ -201,6 +183,7 @@ let view, zoom = 1, drag = null;
 let skyRotation = 0;
 let width, height, radius, centerX, centerY;
 let pointer = null;
+let tappedBody = null;
 function rotateView(axis, angle) {
   const cosine = Math.cos(angle);
   const sine = Math.sin(angle);
@@ -289,14 +272,15 @@ function formatHorizontal({altitude,azimuth}) {
 }
 const insideMarkerRadius = 14;
 function updateCoordinates() {
-  if (!pointer || !radius) {
+  if ((!pointer && tappedBody === null) || !radius) {
     coordinates.hidden = true;
     positionDot.hidden = true;
     return;
   }
   const box = canvas.getBoundingClientRect();
-  const x = pointer.x-box.left;
-  const y = pointer.y-box.top;
+  const [x,y] = tappedBody === null
+    ? [pointer.x-box.left,pointer.y-box.top]
+    : projectSky(bodies[tappedBody].horizontal);
   let target;
   let position;
   if (x >= 0 && x < width && y >= 0 && y < height) {
@@ -310,6 +294,7 @@ function updateCoordinates() {
           nearest = distance;
         }
       }
+      if (tappedBody !== null) target = bodies[tappedBody];
       position = target?.horizontal;
     } else {
       position = celestialAt(x,y);
@@ -325,7 +310,7 @@ function updateCoordinates() {
   if (insideMode) {
     const {altText,azText} = formatHorizontal(position);
     coordinates.textContent = target.name+'\n기하학적 고도  '+formatHorizontal(target.geometric).altText+
-      '\n겉보기 고도  '+altText+'\n방위각  '+azText;
+      '\n겉보기 고도  '+altText+'\n방위각  '+azText+'\n'+riseSetTimes[bodies.indexOf(target)];
   } else {
     const {raText,decText} = formatCoordinates(position);
     coordinates.textContent = '적경 (RA)  '+raText+'\n적위 (Dec)  '+decText;
@@ -334,8 +319,8 @@ function updateCoordinates() {
   const tipHeight = coordinates.offsetHeight;
   const left = x+14+tipWidth <= width-6 ? x+14 : x-tipWidth-14;
   const top = y+14+tipHeight <= height-6 ? y+14 : y-tipHeight-14;
-  coordinates.style.left = Math.max(6,left)+'px';
-  coordinates.style.top = Math.max(6,top)+'px';
+  coordinates.style.left = Math.max(6,Math.min(left,width-tipWidth-6))+'px';
+  coordinates.style.top = Math.max(6,Math.min(top,height-tipHeight-6))+'px';
 }
 function stroke(points, front) {
   ctx.beginPath();
@@ -530,9 +515,9 @@ function refreshDailyTracks(now) {
       if (offset === day/2 && index === 0) baseAzimuth = body.dec <= latitude ? 180 : 0;
     });
   }
-  events.forEach(({rise,set},index) => {
+  riseSetTimes = events.map(({rise,set},index) => {
     const prefix = index === 0 ? '일' : '월';
-    riseSetLabels[index].textContent = prefix+'출 '+(rise.join(', ') || '없음')+
+    return prefix+'출 '+(rise.join(', ') || '없음')+
       ' · '+prefix+'몰 '+(set.join(', ') || '없음');
   });
   dailyTrackKey = key;
@@ -544,29 +529,23 @@ function refreshBodies() {
     localFrame = horizonFrame(now);
     refreshDailyTracks(now);
   }
-  const positions = bodies.map((body,index) => {
-    if (insideMode) {
+  if (insideMode) {
+    bodies.forEach((body,index) => {
       body.geometric = horizontalCoordinates(body.point,localFrame,body.distanceInEarthRadii);
       body.horizontal = apparentPosition(body.geometric);
       const upper = apparentAltitude(body.geometric.altitude+angularRadius(body,index));
       const lower = apparentAltitude(body.geometric.altitude-angularRadius(body,index));
       body.visibleFraction = Math.max(0,Math.min(1,upper/(upper-lower)));
-      const {altText,azText} = formatHorizontal(body.horizontal);
-      const status = body.visibleFraction === 0 ? ' (지평선 아래)' : '';
-      return body.name+' · 방위각 '+azText+' / 기하학적 고도 '+formatHorizontal(body.geometric).altText+
-        ' / 겉보기 고도 '+altText+status;
-    }
-    const {raText,decText} = formatCoordinates(body);
-    return body.name+' '+raText+' / '+decText;
-  });
+    });
+  } else {
+    ephemerisLabel.textContent = bodies.map(body => {
+      const {raText,decText} = formatCoordinates(body);
+      return body.name+' '+raText+' / '+decText;
+    }).join(' · ');
+  }
   const timeLabel = skyClock.format(now)+' KST';
   skyTime.dateTime = now.toISOString();
   skyTime.textContent = timeLabel;
-  if (insideMode) {
-    positions.forEach((position,index) => { skyAngles[index].textContent = position; });
-  } else {
-    ephemerisLabel.textContent = positions.join(' · ');
-  }
   draw();
 }
 function lunarAppearance(sun,moon) {
@@ -880,7 +859,10 @@ canvas.addEventListener('pointerdown', event => {
   };
 });
 canvas.addEventListener('pointermove', event => {
-  if (event.pointerType !== 'touch') pointer = {x:event.clientX,y:event.clientY};
+  if (event.pointerType !== 'touch') {
+    tappedBody = null;
+    pointer = {x:event.clientX,y:event.clientY};
+  }
   if (drag?.id !== event.pointerId) {
     updateCoordinates();
     return;
@@ -892,6 +874,18 @@ canvas.addEventListener('pointermove', event => {
   drag.x = event.clientX;
   drag.y = event.clientY;
   draw();
+});
+canvas.addEventListener('pointerup',event => {
+  if (!insideMode || event.pointerType !== 'touch') return;
+  const box = canvas.getBoundingClientRect();
+  const index = bodies.reduce((closest,body,i) => {
+    const [x,y] = projectSky(body.horizontal);
+    const distance = Math.hypot(event.clientX-box.left-x,event.clientY-box.top-y);
+    return distance <= closest.distance ? {index:i,distance} : closest;
+  },{index:null,distance:insideMarkerRadius+10}).index;
+  tappedBody = tappedBody === index ? null : index;
+  pointer = null;
+  updateCoordinates();
 });
 canvas.addEventListener('pointerleave', () => {
   pointer = null;
@@ -1031,7 +1025,7 @@ function selectView(isInside) {
   insideMode = isInside;
   pointer = null;
   canvas.parentElement.classList.toggle('inside-view',insideMode);
-  skyReadout.hidden = !insideMode;
+  tappedBody = null;
   ephemerisLabel.hidden = insideMode;
   canvas.setAttribute('aria-label',insideMode ? '관측지 하늘 지도' : '회전 가능한 3D 천구');
   canvas.setAttribute('aria-describedby',insideMode ? 'help inside-note' : 'help keys');
@@ -1041,7 +1035,7 @@ function selectView(isInside) {
   insideNote.hidden = !insideMode;
   for (const note of outsideNotes) note.hidden = insideMode;
   help.textContent = insideMode
-    ? '회전 버튼으로 지도 방향을 바꾸세요. 태양이나 달에 마우스를 올리면 해당 천체의 고도와 방위각을 볼 수 있습니다.'
+    ? '태양·달에 마우스를 올리거나 탭하면 방위각, 고도, 출몰 시각을 볼 수 있습니다.'
     : outsideHelp;
   refreshBodies();
 }
