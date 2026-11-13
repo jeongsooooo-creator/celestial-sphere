@@ -64,7 +64,7 @@ small{display:block;color:#92a9c1;margin-top:7px}
 <button type="button" id="outside-mode" aria-pressed="true">천구 밖에서 보기</button>
 <button type="button" id="inside-mode" aria-pressed="false">관측지 하늘 보기</button>
 </div></div>
-<p id="help">드래그로 회전하고, 휠로 확대·축소하세요. 천구 위에 마우스를 올리면 적경과 적위가 표시됩니다.</p></header>
+<p id="help">드래그로 회전하고, 휠로 확대·축소하세요. 천구 앞면의 행성이나 별에 마우스를 올리면 이름, 설명과 적경·적위가 표시됩니다.</p></header>
 <div class="setup-controls">
 <div class="time-controls" role="group" aria-label="시뮬레이션 날짜와 시간">
 <button type="button" id="day-back">−1일</button>
@@ -76,6 +76,11 @@ small{display:block;color:#92a9c1;margin-top:7px}
 <option value="1000">1000배속</option>
 </select></label>
 <button type="button" id="time-now">현재 시각으로</button>
+</div>
+<div id="object-controls" class="time-controls" role="group" aria-label="천체 표시">
+<label><input type="checkbox" id="show-planets" checked> 행성</label>
+<label><input type="checkbox" id="show-stars" checked> 밝은 별</label>
+<span id="planet-range" hidden>행성 계산 범위 1800–2050년</span>
 </div>
 <form id="observer" class="observer" hidden>
 <label>위도 <input id="latitude" type="number" min="-90" max="90" step="any" value="35.18" required></label>
@@ -95,7 +100,7 @@ small{display:block;color:#92a9c1;margin-top:7px}
 <div class="legend" id="outside-legend"><span style="--color:#688bae">적경·적위 격자</span><span style="--color:#72e7ef">천구의 적도</span><span style="--color:#ffca73">황도</span><span style="--color:#c7abff">천구의 양극</span></div>
 <small id="outside-drag">좌우 드래그는 극축을 중심으로 천구를 돌립니다. 적위 +45° 이상 또는 −45° 이하인 극 부근에서 시작하면 극축의 방향을 바꿀 수 있습니다.</small>
 <small id="ephemeris"></small>
-<small id="outside-note">해와 달은 지구 중심 기준의 근사 위치입니다. 점선 테두리는 천구 뒷면에 있음을 뜻합니다.</small>
+<small id="outside-note">해·달·행성은 지구 중심 기준의 근사 위치입니다. 별은 기준 좌표에 세차를 반영했습니다. 점선 테두리는 천구 뒷면에 있음을 뜻합니다.</small>
 <small id="keys">격자 숫자는 적경(h)과 적위(°)입니다. 점선은 천구의 뒷면입니다. 키보드 방향키로 회전하고, + / − 키로 크기를 조절할 수 있습니다.</small>
 <details id="inside-note" hidden open><summary>하늘 지도 설명</summary><small>바깥 원은 천구의 윤곽, 안쪽 타원은 지평선입니다. 경로는 한국 시간 00:00부터 5분 간격으로 계산합니다. 금색 태양 경로는 다음 날 00:00까지, 연보라색 달 경로는 다음 날 01:00까지입니다. 궤도의 실선과 점선은 겉보기 중심 고도 0°를 기준으로 나뉩니다. 해와 달의 밝은 부분은 지평선 위에 보이는 범위만 그립니다. 겉보기 고도와 출몰 시각은 표준 대기와 평탄한 지평선을 가정한 추정값입니다.</small></details>
 </main>
@@ -122,7 +127,12 @@ const latitudeInput = document.querySelector('#latitude');
 const longitudeInput = document.querySelector('#longitude');
 const help = document.querySelector('#help');
 const outsideHelp = help.textContent;
-const outsideNotes = ['#outside-legend','#outside-drag','#outside-note','#keys'].map(id => document.querySelector(id));
+const showPlanets = document.querySelector('#show-planets');
+const showStars = document.querySelector('#show-stars');
+const planetRange = document.querySelector('#planet-range');
+let extraObjects = [];
+let frontObjects = [];
+const outsideNotes = ['#object-controls','#outside-legend','#outside-drag','#outside-note','#keys'].map(id => document.querySelector(id));
 const insideNote = document.querySelector('#inside-note');
 let latitude = latitudeInput.valueAsNumber;
 let longitude = longitudeInput.valueAsNumber;
@@ -297,7 +307,15 @@ function updateCoordinates() {
       if (tappedBody !== null) target = bodies[tappedBody];
       position = target?.horizontal;
     } else {
-      position = celestialAt(x,y);
+      let nearest = 10;
+      for (const object of frontObjects) {
+        const distance = Math.hypot(x-object.screen[0],y-object.screen[1]);
+        if (distance <= nearest) {
+          target = object;
+          nearest = distance;
+        }
+      }
+      position = target ?? celestialAt(x,y);
     }
   }
   coordinates.hidden = !position;
@@ -313,7 +331,8 @@ function updateCoordinates() {
       '\n겉보기 고도  '+altText+'\n방위각  '+azText+'\n'+riseSetTimes[bodies.indexOf(target)];
   } else {
     const {raText,decText} = formatCoordinates(position);
-    coordinates.textContent = '적경 (RA)  '+raText+'\n적위 (Dec)  '+decText;
+    coordinates.textContent = (target ? target.name+'\n'+target.description+'\n' : '')+
+      '적경 (RA)  '+raText+'\n적위 (Dec)  '+decText;
   }
   const tipWidth = coordinates.offsetWidth;
   const tipHeight = coordinates.offsetHeight;
@@ -390,6 +409,91 @@ function solarAndLunarPositions(time) {
     {name:'달',color:'#e2edff',distanceInEarthRadii:moonDistance,...equatorial(moonLongitude,moonLatitude)}
   ];
 }
+// Rounded J2000 catalog coordinates (RA in hours, declination in degrees).
+const brightStars = [
+  ['북극성',2.5303,89.2641,'작은곰자리 · 천구 북극 가까이에 있는 별'],
+  ['시리우스',6.7525,-16.7161,'큰개자리 · 밤하늘에서 가장 밝은 별'],
+  ['카노푸스',6.3992,-52.6957,'용골자리 · 남쪽 하늘의 밝은 별'],
+  ['아르크투루스',14.2610,19.1824,'목동자리 · 주황색 거성'],
+  ['베가',18.6156,38.7837,'거문고자리 · 여름철 대삼각형의 한 꼭짓점'],
+  ['카펠라',5.2782,45.9980,'마차부자리 · 여러 별로 이루어진 별계'],
+  ['리겔',5.2423,-8.2016,'오리온자리 · 청백색 초거성'],
+  ['프로키온',7.6550,5.2250,'작은개자리 · 겨울철 대삼각형의 한 꼭짓점'],
+  ['베텔게우스',5.9195,7.4071,'오리온자리 · 적색 초거성'],
+  ['알타이르',19.8464,8.8683,'독수리자리 · 여름철 대삼각형의 한 꼭짓점']
+];
+// JPL approximate elements and rates for 1800–2050.
+// https://ssd.jpl.nasa.gov/planets/approx_pos.html
+const earthElements = [
+  [1.00000261,.01671123,-.00001531,100.46457166,102.93768193,0],
+  [.00000562,-.00004392,-.01294668,35999.37244981,.32327364,0]
+];
+const planetElements = [
+  ['수성','#b8c5d5','태양에 가장 가까운 행성',
+    [.38709927,.20563593,7.00497902,252.25032350,77.45779628,48.33076593],
+    [.00000037,.00001906,-.00594749,149472.67411175,.16047689,-.12534081]],
+  ['금성','#f1dcab','두꺼운 구름에 덮인 암석 행성',
+    [.72333566,.00677672,3.39467605,181.97909950,131.60246718,76.67984255],
+    [.00000390,-.00004107,-.00078890,58517.81538729,.00268329,-.27769418]],
+  ['화성','#ff977c','산화철 때문에 붉게 보이는 암석 행성',
+    [1.52371034,.09339410,1.84969142,-4.55343205,-23.94362959,49.55953891],
+    [.00001847,.00007882,-.00813131,19140.30268499,.44441088,-.29257343]],
+  ['목성','#efbb94','태양계에서 가장 큰 행성',
+    [5.20288700,.04838624,1.30439695,34.39644051,14.72847983,100.47390909],
+    [-.00011607,-.00013253,-.00183714,3034.74612775,.21252668,.20469106]],
+  ['토성','#f2d287','얼음과 암석으로 이루어진 고리가 두드러지는 행성',
+    [9.53667594,.05386179,2.48599187,49.95424423,92.59887831,113.66242448],
+    [-.00125060,-.00050991,.00193609,1222.49362201,-.41897216,-.28867794]]
+];
+function heliocentric(elements,rates,t) {
+  const [a,e,inclination,L,perihelion,node] = elements.map((value,i) => value+t*rates[i]);
+  const anomaly = trueAnomaly(L-perihelion,e)*rad;
+  const distance = a*(1-e*e)/(1+e*Math.cos(anomaly));
+  const angle = anomaly+(perihelion-node)*rad;
+  const x = distance*Math.cos(angle);
+  const y = distance*Math.sin(angle);
+  const n = node*rad;
+  const i = inclination*rad;
+  return [x*Math.cos(n)-y*Math.cos(i)*Math.sin(n),
+    x*Math.sin(n)+y*Math.cos(i)*Math.cos(n), y*Math.sin(i)];
+}
+function equinoxOfDate(ra,dec,t) {
+  // IAU 1976 precession from J2000, adequate for this approximate view.
+  const zeta = (2306.2181*t+0.30188*t*t+0.017998*t**3)/3600*rad;
+  const z = (2306.2181*t+1.09468*t*t+0.018203*t**3)/3600*rad;
+  const theta = (2004.3109*t-0.42665*t*t-0.041833*t**3)/3600*rad;
+  const a = Math.cos(dec)*Math.sin(ra+zeta);
+  const b = Math.cos(theta)*Math.cos(dec)*Math.cos(ra+zeta)-Math.sin(theta)*Math.sin(dec);
+  const c = Math.sin(theta)*Math.cos(dec)*Math.cos(ra+zeta)+Math.cos(theta)*Math.sin(dec);
+  const rightAscension = Math.atan2(a,b)+z;
+  const declination = Math.atan2(c,Math.hypot(a,b));
+  return {ra:(rightAscension/rad+360)%360,dec:declination/rad,
+    point:celestial(rightAscension,declination)};
+}
+function additionalObjects(time) {
+  const t = (time.getTime()-Date.UTC(2000,0,1,12))/(36525*86400000);
+  const objects = [];
+  if (showStars.checked) {
+    for (const [name,ra,dec,description] of brightStars) {
+      objects.push({name,description,color:'#dceaff',size:2.7,...equinoxOfDate(ra*15*rad,dec*rad,t)});
+    }
+  }
+  const year = time.getUTCFullYear();
+  planetRange.hidden = !showPlanets.checked || (year >= 1800 && year <= 2050);
+  if (showPlanets.checked && planetRange.hidden) {
+    const earth = heliocentric(...earthElements,t);
+    const tilt = 23.43928*rad;
+    for (const [name,color,description,elements,rates] of planetElements) {
+      const [x,y,z] = heliocentric(elements,rates,t).map((value,i) => value-earth[i]);
+      const east = y*Math.cos(tilt)-z*Math.sin(tilt);
+      const north = y*Math.sin(tilt)+z*Math.cos(tilt);
+      objects.push({name,color,description,size:4,
+        ...equinoxOfDate(Math.atan2(east,x),Math.atan2(north,Math.hypot(x,east)),t)});
+    }
+  }
+  return objects;
+}
+
 const millisecondsPerDay = 86400000;
 const timeSpeedSelect = document.querySelector('#time-speed');
 let timeSpeed = 1;
@@ -538,6 +642,7 @@ function refreshBodies() {
       body.visibleFraction = Math.max(0,Math.min(1,upper/(upper-lower)));
     });
   } else {
+    extraObjects = additionalObjects(now);
     ephemerisLabel.textContent = bodies.map(body => {
       const {raText,decText} = formatCoordinates(body);
       return body.name+' '+raText+' / '+decText;
@@ -827,6 +932,24 @@ function draw() {
     ctx.fillText('천구의 ' + label,x,y-(y <= centerY ? 16 : -16));
   }
   ctx.globalAlpha = 1;
+  frontObjects = extraObjects.map(object => ({...object,screen:project(object.point)}))
+    .filter(({screen:[x,y,depth]}) => depth >= 0 && x >= 0 && x < width && y >= 0 && y < height);
+  ctx.font = '600 11px system-ui';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'middle';
+  const occupied = bodies.map(body => project(body.point));
+  for (const {name,color,size,screen:[x,y]} of frontObjects) {
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.arc(x,y,size,0,2*Math.PI);
+    ctx.fill();
+    if (occupied.some(([px,py]) => Math.abs(px-x)<52 && Math.abs(py-y)<14)) continue;
+    ctx.strokeStyle = '#0a1525';
+    ctx.lineWidth = 3;
+    ctx.strokeText(name,x+7,y);
+    ctx.fillText(name,x+7,y);
+    occupied.push([x,y]);
+  }
   drawBodies(bodies.map(body => ({...body,screen:project(body.point)})));
   updateCoordinates();
 }
@@ -1039,6 +1162,7 @@ function selectView(isInside) {
     : outsideHelp;
   refreshBodies();
 }
+for (const toggle of [showPlanets,showStars]) toggle.addEventListener('change',refreshBodies);
 outsideButton.onclick = () => selectView(false);
 insideButton.onclick = () => selectView(true);
 observerForm.addEventListener('submit',event => {
