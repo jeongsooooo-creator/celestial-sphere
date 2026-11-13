@@ -113,7 +113,7 @@ small{display:block;color:#92a9c1;margin-top:7px}
 <small id="ephemeris"></small>
 <small id="outside-note">해와 달은 지구 중심 기준의 근사 위치입니다. 점선 테두리는 천구 뒷면에 있음을 뜻합니다.</small>
 <small id="keys">격자 숫자는 적경(h)과 적위(°)입니다. 점선은 천구의 뒷면입니다. 키보드 방향키로 회전하고, + / − 키로 크기를 조절할 수 있습니다.</small>
-<details id="inside-note" hidden><summary>하늘 지도 설명</summary><small>바깥 원은 천구의 윤곽, 안쪽 타원은 지평선입니다. 경로는 한국 시간 00:00부터 5분 간격으로 계산합니다. 금색 태양 경로는 다음 날 00:00까지, 연보라색 달 경로는 다음 날 01:00까지입니다. 실선과 채운 원은 지평선 위, 점선과 빈 원은 아래입니다. 달의 시차를 반영하며 대기 굴절은 제외합니다.</small></details>
+<details id="inside-note" hidden><summary>하늘 지도 설명</summary><small>바깥 원은 천구의 윤곽, 안쪽 타원은 지평선입니다. 경로는 한국 시간 00:00부터 5분 간격으로 계산합니다. 금색 태양 경로는 다음 날 00:00까지, 연보라색 달 경로는 다음 날 01:00까지입니다. 궤도의 실선과 점선은 겉보기 중심 고도 0°를 기준으로 나뉩니다. 해와 달의 밝은 부분은 지평선 위에 보이는 범위만 그립니다. 겉보기 고도는 표준 대기 굴절을 적용한 추정값입니다.</small></details>
 </main>
 <script>
 'use strict';
@@ -263,6 +263,15 @@ function horizontalCoordinates(point, frame, distanceInEarthRadii = Infinity) {
     azimuth:Math.hypot(east,north) < 1e-12 ? null : (Math.atan2(east,north)/rad+360)%360
   };
 }
+function apparentAltitude(altitude) {
+  // Sæmundsson refraction, tapered below its near-horizon range.
+  const h = Math.max(-1,altitude);
+  const refraction = Math.max(0,1.02/(60*Math.tan((h+10.3/(h+5.11))*rad)));
+  return altitude+refraction*Math.max(0,Math.min(1,(altitude+3)/2));
+}
+function apparentPosition(position) {
+  return {...position,altitude:apparentAltitude(position.altitude)};
+}
 function projectSky({altitude,azimuth}) {
   const angle = ((azimuth ?? 0)-baseAzimuth+skyRotation)*rad;
   const elevation = altitude*rad;
@@ -315,7 +324,8 @@ function updateCoordinates() {
 
   if (insideMode) {
     const {altText,azText} = formatHorizontal(position);
-    coordinates.textContent = target.name+'\n고도  '+altText+'\n방위각  '+azText;
+    coordinates.textContent = target.name+'\n기하학적 고도  '+formatHorizontal(target.geometric).altText+
+      '\n겉보기 고도  '+altText+'\n방위각  '+azText;
   } else {
     const {raText,decText} = formatCoordinates(position);
     coordinates.textContent = '적경 (RA)  '+raText+'\n적위 (Dec)  '+decText;
@@ -464,11 +474,13 @@ function findCrossing(start, end, startsAbove, heightAt) {
   return Math.floor((start+end)/2);
 }
 
+function angularRadius(body, index) {
+  return index === 0 ? 16/60 : Math.asin(0.2725/body.distanceInEarthRadii)/rad;
+}
 function riseSetHeight(body, index, altitude) {
   // Standard horizon refraction plus the apparent radius of the upper limb.
   // Lunar altitude already includes topocentric parallax.
-  const radius = index === 0 ? 16/60 : Math.asin(0.2725/body.distanceInEarthRadii)/rad;
-  return altitude+34/60+radius;
+  return altitude+34/60+angularRadius(body,index);
 }
 
 function refreshDailyTracks(now) {
@@ -488,6 +500,7 @@ function refreshDailyTracks(now) {
       if (index === 0 && offset > day) return;
       const track = dailyTracks[index];
       const position = horizontalCoordinates(body.point,frame,body.distanceInEarthRadii);
+      const apparent = apparentPosition(position);
       const previous = track.at(-1);
       const positionAt = ms => {
         const date = new Date(ms);
@@ -495,12 +508,12 @@ function refreshDailyTracks(now) {
         const point = horizontalCoordinates(target.point,horizonFrame(date),target.distanceInEarthRadii);
         return {target,point};
       };
-      if (previous && previous.altitude*position.altitude < 0) {
+      if (previous && previous.altitude*apparent.altitude < 0) {
         const crossing = findCrossing(start+offset-trackStep,start+offset,previous.altitude > 0,
-          ms => positionAt(ms).point.altitude);
+          ms => apparentAltitude(positionAt(ms).point.altitude));
         track.push({...positionAt(crossing).point,altitude:0});
       }
-      track.push(position);
+      track.push(apparent);
       if (offset <= day) {
         const height = riseSetHeight(body,index,position.altitude);
         if (offset && (previousHeights[index] >= 0) !== (height >= 0)) {
@@ -531,12 +544,17 @@ function refreshBodies() {
     localFrame = horizonFrame(now);
     refreshDailyTracks(now);
   }
-  const positions = bodies.map(body => {
+  const positions = bodies.map((body,index) => {
     if (insideMode) {
-      body.horizontal = horizontalCoordinates(body.point,localFrame,body.distanceInEarthRadii);
+      body.geometric = horizontalCoordinates(body.point,localFrame,body.distanceInEarthRadii);
+      body.horizontal = apparentPosition(body.geometric);
+      const upper = apparentAltitude(body.geometric.altitude+angularRadius(body,index));
+      const lower = apparentAltitude(body.geometric.altitude-angularRadius(body,index));
+      body.visibleFraction = Math.max(0,Math.min(1,upper/(upper-lower)));
       const {altText,azText} = formatHorizontal(body.horizontal);
-      const status = body.horizontal.altitude < 0 ? ' (지평선 아래)' : '';
-      return body.name+' · 방위각 '+azText+' / 고도 '+altText+status;
+      const status = body.visibleFraction === 0 ? ' (지평선 아래)' : '';
+      return body.name+' · 방위각 '+azText+' / 기하학적 고도 '+formatHorizontal(body.geometric).altText+
+        ' / 겉보기 고도 '+altText+status;
     }
     const {raText,decText} = formatCoordinates(body);
     return body.name+' '+raText+' / '+decText;
@@ -595,8 +613,8 @@ function drawBodies(markers) {
   const close = markers.length === 2 && Math.hypot(
     markers[0].screen[0]-markers[1].screen[0],markers[0].screen[1]-markers[1].screen[1]
   ) < (insideMode ? 50 : 35);
-  for (const {name,color,phase,screen:[x,y,depth]} of markers) {
-    const front = depth >= 0;
+  for (const {name,color,phase,visibleFraction,horizontal,screen:[x,y,depth]} of markers) {
+    const front = insideMode ? visibleFraction > 0 : depth >= 0;
     ctx.globalAlpha = insideMode || front ? 1 : 0.65;
     ctx.setLineDash(insideMode || front ? [] : [2,2]);
     ctx.beginPath();
@@ -605,12 +623,28 @@ function drawBodies(markers) {
     ctx.fillStyle = color;
     ctx.strokeStyle = front ? '#0a1525' : color;
     ctx.lineWidth = 1.5;
+    const partial = insideMode && visibleFraction > 0 && visibleFraction < 1;
+    if (partial) {
+      const [upX,upY] = projectSky({...horizontal,altitude:horizontal.altitude+0.01});
+      ctx.save();
+      const transform = ctx.getTransform();
+      ctx.translate(x,y);
+      ctx.rotate(Math.atan2(upY-y,upX-x)+Math.PI/2);
+      ctx.beginPath();
+      ctx.rect(-markerRadius,-markerRadius,2*markerRadius,2*markerRadius*visibleFraction);
+      ctx.clip();
+      // Keep the clip in screen coordinates while drawing the disk.
+      ctx.setTransform(transform);
+      ctx.beginPath();
+      ctx.arc(x,y,markerRadius,0,2*Math.PI);
+    }
     if (front && phase) {
       drawMoonPhase(x,y,markerRadius,phase);
       ctx.beginPath();
       ctx.arc(x,y,markerRadius,0,2*Math.PI);
     } else if (front) ctx.fill();
     ctx.stroke();
+    if (partial) ctx.restore();
     ctx.setLineDash([]);
     ctx.font = '600 13px system-ui';
     ctx.textBaseline = 'middle';
