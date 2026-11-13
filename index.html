@@ -27,11 +27,6 @@ p{color:#a9bfd6;margin:0 0 18px}
 .sky-readout .sun{color:#ffbd4a}
 .sky-readout .moon{color:#d9c5ff}
 .sky-readout .rise-set{padding-top:8px;border-top:1px solid #263b57}
-@media (min-width:850px){
-  main{--sky-readout-width:232px}
-  .sky-layout.with-readout{grid-template-columns:minmax(0,1fr) var(--sky-readout-width);align-items:start}
-  main:has(.with-readout) .title-row{margin-right:calc(var(--sky-readout-width) + 12px)}
-}
 canvas{display:block;width:100%;height:clamp(340px,62vh,660px);cursor:grab;touch-action:none}
 canvas:active{cursor:grabbing}
 .position-dot{position:absolute;z-index:1;width:9px;height:9px;border:1px solid #0a1525;border-radius:50%;background:#fff;box-shadow:0 0 0 2px #72e7ef;transform:translate(-50%,-50%);pointer-events:none}
@@ -73,7 +68,7 @@ small{display:block;color:#92a9c1;margin-top:7px}
 <label>경도 <input id="longitude" type="number" min="-180" max="180" step="any" value="129.08" required></label>
 <button type="submit">관측지 적용</button>
 </form>
-<div class="sky-layout" id="sky-layout">
+<div class="sky-layout"
 <div class="stage">
 <canvas tabindex="0" aria-label="회전 가능한 3D 천구" aria-describedby="help keys"></canvas>
 <div class="position-dot" id="position-dot" aria-hidden="true" hidden></div>
@@ -101,7 +96,6 @@ small{display:block;color:#92a9c1;margin-top:7px}
 const canvas = document.querySelector('canvas');
 const ctx = canvas.getContext('2d');
 const ephemerisLabel = document.querySelector('#ephemeris');
-const skyLayout = document.querySelector('#sky-layout');
 const skyReadout = document.querySelector('#sky-readout');
 const skyTime = document.querySelector('#sky-time');
 const skyAngles = ['#sky-sun','#sky-moon'].map(id => document.querySelector(id));
@@ -256,8 +250,8 @@ function projectSky({altitude,azimuth}) {
 }
 function formatHorizontal({altitude,azimuth}) {
   return {
-    altText:altitude.toFixed(1)+'°',
-    azText:azimuth === null ? '정의되지 않음' : (Math.round(azimuth*10)%3600/10).toFixed(1)+'°'
+    altText:(Math.round(altitude*10000)/10000).toFixed(4)+'°',
+    azText:azimuth === null ? '정의되지 않음' : (Math.round(azimuth*10000)%3600000/10000).toFixed(4)+'°'
   };
 }
 const insideMarkerRadius = 14;
@@ -935,7 +929,6 @@ function selectView(isInside) {
   insideMode = isInside;
   pointer = null;
   canvas.parentElement.classList.toggle('inside-view',insideMode);
-  skyLayout.classList.toggle('with-readout',insideMode);
   skyReadout.hidden = !insideMode;
   ephemerisLabel.hidden = insideMode;
   canvas.setAttribute('aria-label',insideMode ? '관측지 하늘 지도' : '회전 가능한 3D 천구');
