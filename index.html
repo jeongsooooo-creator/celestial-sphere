@@ -19,6 +19,14 @@ p{color:#a9bfd6;margin:0 0 18px}
 .observer input{width:92px;margin-left:5px;color:inherit;background:#111f33;border:1px solid #3b506b;border-radius:5px;padding:4px;font:inherit}
 .inside-view canvas,.inside-view canvas:active{cursor:crosshair}
 .stage{position:relative;border:1px solid #263b57;border-radius:20px;overflow:hidden;background:radial-gradient(ellipse at center,#162940,#0a1221 76%)}
+.sky-layout{display:grid;gap:12px}
+.sky-readout{display:grid;gap:8px;padding:12px 14px;border:1px solid #263b57;border-radius:12px;background:#111f33;font-size:13px;font-variant-numeric:tabular-nums}
+.sky-readout time{color:#d6e5f5}
+.sky-readout .sun{color:#ffbd4a}
+.sky-readout .moon{color:#d9c5ff}
+@media (min-width:850px){
+  .sky-layout.with-readout{grid-template-columns:minmax(0,1fr) auto;align-items:start}
+}
 canvas{display:block;width:100%;height:clamp(340px,62vh,660px);cursor:grab;touch-action:none}
 canvas:active{cursor:grabbing}
 .position-dot{position:absolute;z-index:1;width:9px;height:9px;border:1px solid #0a1525;border-radius:50%;background:#fff;box-shadow:0 0 0 2px #72e7ef;transform:translate(-50%,-50%);pointer-events:none}
@@ -59,11 +67,18 @@ small{display:block;color:#92a9c1;margin-top:7px}
 <label>경도 <input id="longitude" type="number" min="-180" max="180" step="any" value="129.08" required></label>
 <button type="submit">관측지 적용</button>
 </form>
+<div class="sky-layout" id="sky-layout">
 <div class="stage">
 <canvas tabindex="0" aria-label="회전 가능한 3D 천구" aria-describedby="help keys"></canvas>
 <div class="position-dot" id="position-dot" aria-hidden="true" hidden></div>
 <div class="coordinates" id="coordinates" hidden></div>
 <div class="controls"><button type="button" id="turn-left" aria-label="왼쪽으로 회전" title="왼쪽으로 회전">↶</button><button type="button" id="turn-right" aria-label="오른쪽으로 회전" title="오른쪽으로 회전">↷</button><button type="button" id="out" aria-label="축소">−</button><output id="zoom" aria-label="확대율">100%</output><button type="button" id="in" aria-label="확대">+</button><button type="button" id="reset">초기화</button></div>
+</div>
+<aside class="sky-readout" id="sky-readout" aria-label="시뮬레이션 시각과 태양·달 각도" hidden>
+<time id="sky-time"></time>
+<div class="sun" id="sky-sun"></div>
+<div class="moon" id="sky-moon"></div>
+</aside>
 </div>
 <div class="legend" id="outside-legend"><span style="--color:#688bae">적경·적위 격자</span><span style="--color:#72e7ef">천구의 적도</span><span style="--color:#ffca73">황도</span><span style="--color:#c7abff">천구의 양극</span></div>
 <small id="outside-drag">좌우 드래그는 극축을 중심으로 천구를 돌립니다. 적위 +45° 이상 또는 −45° 이하인 극 부근에서 시작하면 극축의 방향을 바꿀 수 있습니다.</small>
@@ -77,6 +92,10 @@ small{display:block;color:#92a9c1;margin-top:7px}
 const canvas = document.querySelector('canvas');
 const ctx = canvas.getContext('2d');
 const ephemerisLabel = document.querySelector('#ephemeris');
+const skyLayout = document.querySelector('#sky-layout');
+const skyReadout = document.querySelector('#sky-readout');
+const skyTime = document.querySelector('#sky-time');
+const skyAngles = ['#sky-sun','#sky-moon'].map(id => document.querySelector(id));
 const skyClock = new Intl.DateTimeFormat('ko-KR',{
   timeZone:'Asia/Seoul', year:'numeric', month:'2-digit', day:'2-digit',
   hour:'2-digit', minute:'2-digit', second:'2-digit', hour12:false
@@ -450,12 +469,19 @@ function refreshBodies() {
       body.horizontal = horizontalCoordinates(body.point,localFrame,body.distanceInEarthRadii);
       const {altText,azText} = formatHorizontal(body.horizontal);
       const status = body.horizontal.altitude < 0 ? ' (지평선 아래)' : '';
-      return body.name+' 고도 '+altText+' / 방위각 '+azText+status;
+      return body.name+' · 방위각 '+azText+' / 고도 '+altText+status;
     }
     const {raText,decText} = formatCoordinates(body);
     return body.name+' '+raText+' / '+decText;
   });
-  ephemerisLabel.textContent = positions.join(' · ')+' · '+skyClock.format(now)+' KST 기준';
+  const timeLabel = skyClock.format(now)+' KST';
+  if (insideMode) {
+    skyTime.dateTime = now.toISOString();
+    skyTime.textContent = timeLabel;
+    positions.forEach((position,index) => { skyAngles[index].textContent = position; });
+  } else {
+    ephemerisLabel.textContent = positions.join(' · ')+' · '+timeLabel+' 기준';
+  }
   draw();
 }
 function drawBodies(markers) {
@@ -535,6 +561,29 @@ function drawSkyTrack(points,color) {
   ctx.setLineDash([]);
   stroke(projected,true);
 }
+function drawSkyGuide({horizontal,screen},color) {
+  const {azimuth,altitude} = horizontal;
+  if (azimuth === null) return;
+  const [x,y] = projectSky({azimuth,altitude:0});
+  ctx.save();
+  ctx.strokeStyle = color;
+  ctx.fillStyle = color;
+  ctx.globalAlpha = 0.72;
+  ctx.lineWidth = 1.25;
+  ctx.beginPath();
+  ctx.moveTo(centerX,centerY);
+  ctx.lineTo(x,y);
+  ctx.stroke();
+  ctx.setLineDash(altitude < 0 ? [3,4] : []);
+  ctx.beginPath();
+  ctx.moveTo(x,y);
+  ctx.lineTo(screen[0],screen[1]);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(x,y,3,0,2*Math.PI);
+  ctx.fill();
+  ctx.restore();
+}
 function drawObserver() {
   ctx.save();
   ctx.translate(centerX,centerY);
@@ -579,6 +628,7 @@ function drawObserver() {
   ctx.restore();
 }
 function drawSky() {
+  const markers = bodies.map(body => ({...body,screen:projectSky(body.horizontal)}));
   ctx.setLineDash([]);
   ctx.fillStyle = '#b5d7fa';
   ctx.font = '600 12px system-ui';
@@ -597,6 +647,8 @@ function drawSky() {
   ctx.stroke();
   drawSkyTrack(dailyTracks[0],'#ffbd4a');
   drawSkyTrack(dailyTracks[1],'#c7abff');
+  drawSkyGuide(markers[0],'#ffbd4a');
+  drawSkyGuide(markers[1],'#c7abff');
   ctx.restore();
 
   for (const [name,azimuth] of [['북',0],['동',90],['남',180],['서',270]]) {
@@ -606,7 +658,6 @@ function drawSky() {
     ctx.fillText(name,centerX+(x-centerX)*scale,centerY+(y-centerY)*scale);
   }
   drawObserver();
-  const markers = bodies.map(body => ({...body,screen:projectSky(body.horizontal)}));
   drawBodies(markers);
 }
 function draw() {
@@ -836,6 +887,9 @@ function selectView(isInside) {
   insideMode = isInside;
   pointer = null;
   canvas.parentElement.classList.toggle('inside-view',insideMode);
+  skyLayout.classList.toggle('with-readout',insideMode);
+  skyReadout.hidden = !insideMode;
+  ephemerisLabel.hidden = insideMode;
   canvas.setAttribute('aria-label',insideMode ? '관측지 하늘 지도' : '회전 가능한 3D 천구');
   canvas.setAttribute('aria-describedby',insideMode ? 'help inside-note' : 'help keys');
   outsideButton.setAttribute('aria-pressed',String(!insideMode));
