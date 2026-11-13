@@ -15,6 +15,8 @@ p{color:#a9bfd6;margin:0 0 18px}
 .time-controls select{color:inherit;background:#111f33;border:1px solid #3b506b;border-radius:5px;padding:4px;font:inherit}
 .time-controls button{touch-action:manipulation}
 [hidden]{display:none!important}
+.title-row{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:4px 12px}
+.title-row .view-controls{margin:0 0 8px auto;justify-content:flex-end}
 .view-controls button[aria-pressed=true]{background:#21415e;border-color:#72e7ef}
 .observer input{width:92px;margin-left:5px;color:inherit;background:#111f33;border:1px solid #3b506b;border-radius:5px;padding:4px;font:inherit}
 .inside-view canvas,.inside-view canvas:active{cursor:crosshair}
@@ -26,7 +28,9 @@ p{color:#a9bfd6;margin:0 0 18px}
 .sky-readout .moon{color:#d9c5ff}
 .sky-readout .rise-set{padding-top:8px;border-top:1px solid #263b57}
 @media (min-width:850px){
-  .sky-layout.with-readout{grid-template-columns:minmax(0,1fr) auto;align-items:start}
+  main{--sky-readout-width:232px}
+  .sky-layout.with-readout{grid-template-columns:minmax(0,1fr) var(--sky-readout-width);align-items:start}
+  main:has(.with-readout) .title-row{margin-right:calc(var(--sky-readout-width) + 12px)}
 }
 canvas{display:block;width:100%;height:clamp(340px,62vh,660px);cursor:grab;touch-action:none}
 canvas:active{cursor:grabbing}
@@ -46,11 +50,12 @@ small{display:block;color:#92a9c1;margin-top:7px}
 </head>
 <body>
 <main>
-<header><div class="eyebrow">CELESTIAL SPHERE</div><h1>3D 천구</h1><p id="help">드래그로 회전하고, 휠로 확대·축소하세요. 천구 위에 마우스를 올리면 적경과 적위가 표시됩니다.</p></header>
+<header><div class="eyebrow">CELESTIAL SPHERE</div><div class="title-row"><h1>3D 천구</h1>
 <div class="view-controls" role="group" aria-label="천구 시점">
 <button type="button" id="outside-mode" aria-pressed="true">천구 밖에서 보기</button>
 <button type="button" id="inside-mode" aria-pressed="false">관측지 하늘 보기</button>
-</div>
+</div></div>
+<p id="help">드래그로 회전하고, 휠로 확대·축소하세요. 천구 위에 마우스를 올리면 적경과 적위가 표시됩니다.</p></header>
 <div class="time-controls" role="group" aria-label="시뮬레이션 날짜와 시간">
 <button type="button" id="day-back">−1일</button>
 <button type="button" id="day-forward">+1일</button>
@@ -89,7 +94,7 @@ small{display:block;color:#92a9c1;margin-top:7px}
 <small id="ephemeris"></small>
 <small id="outside-note">해와 달은 지구 중심 기준의 근사 위치입니다. 점선 테두리는 천구 뒷면에 있음을 뜻합니다.</small>
 <small id="keys">격자 숫자는 적경(h)과 적위(°)입니다. 점선은 천구의 뒷면입니다. 키보드 방향키로 회전하고, + / − 키로 크기를 조절할 수 있습니다.</small>
-<small id="inside-note" hidden>바깥 원은 천구의 윤곽, 안쪽 타원은 지평선입니다. 경로는 한국 시간 00:00부터 5분 간격으로 계산합니다. 금색 태양 경로는 다음 날 00:00까지, 연보라색 달 경로는 다음 날 01:00까지입니다. 실선과 채운 원은 지평선 위, 점선과 빈 원은 아래입니다. 달의 시차를 반영하며 대기 굴절은 제외합니다. 툴팁은 천구 앞면의 고도와 방위각을 표시합니다.</small>
+<small id="inside-note" hidden>바깥 원은 천구의 윤곽, 안쪽 타원은 지평선입니다. 경로는 한국 시간 00:00부터 5분 간격으로 계산합니다. 금색 태양 경로는 다음 날 00:00까지, 연보라색 달 경로는 다음 날 01:00까지입니다. 실선과 채운 원은 지평선 위, 점선과 빈 원은 아래입니다. 달의 시차를 반영하며 대기 굴절은 제외합니다. </small>
 </main>
 <script>
 'use strict';
@@ -249,26 +254,13 @@ function projectSky({altitude,azimuth}) {
   const up = Math.sin(elevation);
   return [centerX+radius*right,centerY-radius*(up*skyCos+forward*skySin),altitude];
 }
-function skyAt(x,y) {
-  const right = (x-centerX)/radius;
-  const screenUp = (centerY-y)/radius;
-  const depthSquared = 1-right**2-screenUp**2;
-  if (depthSquared < -1e-12) return null;
-  const depth = Math.sqrt(Math.max(0,depthSquared));
-  const forward = screenUp*skySin-depth*skyCos;
-  const up = screenUp*skyCos+depth*skySin;
-  const horizontal = Math.hypot(right,forward);
-  return {
-    altitude:Math.atan2(up,horizontal)/rad,
-    azimuth:horizontal < 1e-9 ? null : (Math.atan2(right,forward)/rad+baseAzimuth-skyRotation+720)%360
-  };
-}
 function formatHorizontal({altitude,azimuth}) {
   return {
     altText:altitude.toFixed(1)+'°',
     azText:azimuth === null ? '정의되지 않음' : (Math.round(azimuth*10)%3600/10).toFixed(1)+'°'
   };
 }
+const insideMarkerRadius = 14;
 function updateCoordinates() {
   if (!pointer || !radius) {
     coordinates.hidden = true;
@@ -278,9 +270,26 @@ function updateCoordinates() {
   const box = canvas.getBoundingClientRect();
   const x = pointer.x-box.left;
   const y = pointer.y-box.top;
-  const position = x >= 0 && x < width && y >= 0 && y < height ? (insideMode ? skyAt(x,y) : celestialAt(x,y)) : null;
+  let target;
+  let position;
+  if (x >= 0 && x < width && y >= 0 && y < height) {
+    if (insideMode) {
+      let nearest = insideMarkerRadius+5;
+      for (const body of bodies) {
+        const [markerX,markerY] = projectSky(body.horizontal);
+        const distance = Math.hypot(x-markerX,y-markerY);
+        if (distance <= nearest) {
+          target = body;
+          nearest = distance;
+        }
+      }
+      position = target?.horizontal;
+    } else {
+      position = celestialAt(x,y);
+    }
+  }
   coordinates.hidden = !position;
-  positionDot.hidden = !position;
+  positionDot.hidden = insideMode || !position;
   if (!position) return;
 
   positionDot.style.left = x+'px';
@@ -288,7 +297,7 @@ function updateCoordinates() {
 
   if (insideMode) {
     const {altText,azText} = formatHorizontal(position);
-    coordinates.textContent = '고도  '+altText+'\n방위각  '+azText;
+    coordinates.textContent = target.name+'\n고도  '+altText+'\n방위각  '+azText;
   } else {
     const {raText,decText} = formatCoordinates(position);
     coordinates.textContent = '적경 (RA)  '+raText+'\n적위 (Dec)  '+decText;
@@ -526,7 +535,6 @@ function refreshBodies() {
 }
 function drawBodies(markers) {
   // Preserve Sun-then-Moon order regardless of projected depth.
-  const insideMarkerRadius = 14;
   const close = markers.length === 2 && Math.hypot(
     markers[0].screen[0]-markers[1].screen[0],markers[0].screen[1]-markers[1].screen[1]
   ) < (insideMode ? 50 : 35);
@@ -938,7 +946,7 @@ function selectView(isInside) {
   insideNote.hidden = !insideMode;
   for (const note of outsideNotes) note.hidden = insideMode;
   help.textContent = insideMode
-    ? '회전 버튼으로 지도 방향을 바꾸세요. 마우스를 올리면 고도와 방위각을 볼 수 있습니다.'
+    ? '회전 버튼으로 지도 방향을 바꾸세요. 태양이나 달에 마우스를 올리면 해당 천체의 고도와 방위각을 볼 수 있습니다.'
     : outsideHelp;
   refreshBodies();
 }
