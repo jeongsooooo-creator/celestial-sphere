@@ -7,27 +7,31 @@
 <style>
 *{box-sizing:border-box}
 body{margin:0;background:#080e1a;color:#eaf4ff;font:15px/1.6 system-ui,sans-serif}
-main{max-width:1080px;margin:auto;padding:28px clamp(14px,4vw,42px)}
-.eyebrow{color:#8bb7e0;font-size:12px;letter-spacing:.2em}
-h1{font-size:clamp(28px,5vw,46px);line-height:1.2;margin:6px 0 8px}
-p{color:#a9bfd6;margin:0 0 18px}
+main{max-width:1080px;height:100svh;margin:auto;padding:12px clamp(12px,4vw,42px);display:flex;flex-direction:column}
+h1{font-size:clamp(23px,4vw,34px);line-height:1.2;margin:6px 0 8px}
+p{color:#a9bfd6;margin:0 0 8px;font-size:13px}
 .view-controls,.observer,.time-controls{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:12px}
+.setup-controls{display:flex;flex-wrap:wrap;align-items:center;gap:6px 14px;font-size:13px}
+.setup-controls :is(.time-controls,.observer){gap:5px;margin:0}
+.setup-controls label{white-space:nowrap}
+.simulation-clock{text-align:right;margin:4px 0;font-size:13px;font-variant-numeric:tabular-nums}
 .time-controls select{color:inherit;background:#111f33;border:1px solid #3b506b;border-radius:5px;padding:4px;font:inherit}
 .time-controls button{touch-action:manipulation}
 [hidden]{display:none!important}
 .title-row{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:4px 12px}
 .title-row .view-controls{margin:0 0 8px auto;justify-content:flex-end}
 .view-controls button[aria-pressed=true]{background:#21415e;border-color:#72e7ef}
-.observer input{width:92px;margin-left:5px;color:inherit;background:#111f33;border:1px solid #3b506b;border-radius:5px;padding:4px;font:inherit}
+.observer input{width:66px;margin-left:5px;color:inherit;background:#111f33;border:1px solid #3b506b;border-radius:5px;padding:4px;font:inherit}
 .inside-view canvas,.inside-view canvas:active{cursor:crosshair}
-.stage{position:relative;border:1px solid #263b57;border-radius:20px;overflow:hidden;background:radial-gradient(ellipse at center,#162940,#0a1221 76%)}
-.sky-layout{display:grid;gap:12px}
-.sky-readout{display:grid;gap:8px;padding:12px 14px;border:1px solid #263b57;border-radius:12px;background:#111f33;font-size:13px;font-variant-numeric:tabular-nums}
-.sky-readout time{color:#d6e5f5}
+.stage{position:relative;flex:1;min-height:220px;max-height:662px;border:1px solid #263b57;border-radius:20px;overflow:hidden;background:radial-gradient(ellipse at center,#162940,#0a1221 76%)}
+.sky-layout{flex:1;max-height:760px;display:flex;flex-direction:column;gap:6px}
+.sky-readout{display:grid;grid-template-columns:1fr 1fr;gap:6px 12px;padding:6px 10px;border:1px solid #263b57;border-radius:12px;background:#111f33;font-size:13px;font-variant-numeric:tabular-nums}
+.sky-readout small{margin:2px 0 0;font-size:11px}
+.sky-readout .rise-set{border-left:1px solid #263b57;padding-left:10px}
+@media(max-width:480px){.sky-readout{font-size:12px}.sky-readout{overflow-wrap:anywhere}}
 .sky-readout .sun{color:#ffbd4a}
 .sky-readout .moon{color:#d9c5ff}
-.sky-readout .rise-set{padding-top:8px;border-top:1px solid #263b57}
-canvas{display:block;width:100%;height:clamp(340px,62vh,660px);cursor:grab;touch-action:none}
+canvas{position:absolute;inset:0;display:block;width:100%;height:100%;max-height:660px;cursor:grab;touch-action:none}
 canvas:active{cursor:grabbing}
 .position-dot{position:absolute;z-index:1;width:9px;height:9px;border:1px solid #0a1525;border-radius:50%;background:#fff;box-shadow:0 0 0 2px #72e7ef;transform:translate(-50%,-50%);pointer-events:none}
 .coordinates{position:absolute;z-index:1;pointer-events:none;padding:6px 10px;border:1px solid #426385;border-radius:7px;background:#0a1525;color:#eaf4ff;font-size:13px;font-variant-numeric:tabular-nums;white-space:pre-line}
@@ -40,17 +44,19 @@ button:focus-visible,canvas:focus-visible{outline:2px solid #72e7ef;outline-offs
 output{font-variant-numeric:tabular-nums;min-width:64px;text-align:center}
 .legend{display:flex;flex-wrap:wrap;gap:6px 20px;margin-top:14px;color:#b9cee4}
 .legend span::before{content:"";display:inline-block;width:19px;border-top:2px solid var(--color);margin-right:7px;vertical-align:middle}
+details{font-size:12px;color:#a9bfd6;margin-top:4px}
 small{display:block;color:#92a9c1;margin-top:7px}
 </style>
 </head>
 <body>
 <main>
-<header><div class="eyebrow">CELESTIAL SPHERE</div><div class="title-row"><h1>3D 천구</h1>
+<header><div class="title-row"><h1>3D 천구</h1>
 <div class="view-controls" role="group" aria-label="천구 시점">
 <button type="button" id="outside-mode" aria-pressed="true">천구 밖에서 보기</button>
 <button type="button" id="inside-mode" aria-pressed="false">관측지 하늘 보기</button>
 </div></div>
 <p id="help">드래그로 회전하고, 휠로 확대·축소하세요. 천구 위에 마우스를 올리면 적경과 적위가 표시됩니다.</p></header>
+<div class="setup-controls">
 <div class="time-controls" role="group" aria-label="시뮬레이션 날짜와 시간">
 <button type="button" id="day-back">−1일</button>
 <button type="button" id="day-forward">+1일</button>
@@ -63,11 +69,12 @@ small{display:block;color:#92a9c1;margin-top:7px}
 <button type="button" id="time-now">현재 시각으로</button>
 </div>
 <form id="observer" class="observer" hidden>
-<span>관측지 · 기본값 부산</span>
 <label>위도 <input id="latitude" type="number" min="-90" max="90" step="any" value="35.18" required></label>
 <label>경도 <input id="longitude" type="number" min="-180" max="180" step="any" value="129.08" required></label>
 <button type="submit">관측지 적용</button>
 </form>
+</div>
+<time class="simulation-clock" id="sky-time"></time>
 <div class="sky-layout">
 <div class="stage">
 <canvas tabindex="0" aria-label="회전 가능한 3D 천구" aria-describedby="help keys"></canvas>
@@ -75,13 +82,16 @@ small{display:block;color:#92a9c1;margin-top:7px}
 <div class="coordinates" id="coordinates" hidden></div>
 <div class="controls"><button type="button" id="turn-left" aria-label="왼쪽으로 회전" title="왼쪽으로 회전">↶</button><button type="button" id="turn-right" aria-label="오른쪽으로 회전" title="오른쪽으로 회전">↷</button><button type="button" id="out" aria-label="축소">−</button><output id="zoom" aria-label="확대율">100%</output><button type="button" id="in" aria-label="확대">+</button><button type="button" id="reset">초기화</button></div>
 </div>
-<aside class="sky-readout" id="sky-readout" aria-label="시뮬레이션 시각과 태양·달 각도" hidden>
-<time id="sky-time"></time>
+<aside class="sky-readout" id="sky-readout" aria-label="태양·달 위치와 출몰 시각" hidden>
+<div>
 <div class="sun" id="sky-sun"></div>
 <div class="moon" id="sky-moon"></div>
-<div class="sun rise-set" id="sun-rise-set"></div>
+</div>
+<div class="rise-set">
+<div class="sun" id="sun-rise-set"></div>
 <div class="moon" id="moon-rise-set"></div>
 <small>해수면의 평탄한 지평선 기준 예상 시각</small>
+</div>
 </aside>
 </div>
 <div class="legend" id="outside-legend"><span style="--color:#688bae">적경·적위 격자</span><span style="--color:#72e7ef">천구의 적도</span><span style="--color:#ffca73">황도</span><span style="--color:#c7abff">천구의 양극</span></div>
@@ -89,7 +99,7 @@ small{display:block;color:#92a9c1;margin-top:7px}
 <small id="ephemeris"></small>
 <small id="outside-note">해와 달은 지구 중심 기준의 근사 위치입니다. 점선 테두리는 천구 뒷면에 있음을 뜻합니다.</small>
 <small id="keys">격자 숫자는 적경(h)과 적위(°)입니다. 점선은 천구의 뒷면입니다. 키보드 방향키로 회전하고, + / − 키로 크기를 조절할 수 있습니다.</small>
-<small id="inside-note" hidden>바깥 원은 천구의 윤곽, 안쪽 타원은 지평선입니다. 경로는 한국 시간 00:00부터 5분 간격으로 계산합니다. 금색 태양 경로는 다음 날 00:00까지, 연보라색 달 경로는 다음 날 01:00까지입니다. 실선과 채운 원은 지평선 위, 점선과 빈 원은 아래입니다. 달의 시차를 반영하며 대기 굴절은 제외합니다. </small>
+<details id="inside-note" hidden><summary>하늘 지도 설명</summary><small>바깥 원은 천구의 윤곽, 안쪽 타원은 지평선입니다. 경로는 한국 시간 00:00부터 5분 간격으로 계산합니다. 금색 태양 경로는 다음 날 00:00까지, 연보라색 달 경로는 다음 날 01:00까지입니다. 실선과 채운 원은 지평선 위, 점선과 빈 원은 아래입니다. 달의 시차를 반영하며 대기 굴절은 제외합니다.</small></details>
 </main>
 <script>
 'use strict';
@@ -518,12 +528,12 @@ function refreshBodies() {
     return body.name+' '+raText+' / '+decText;
   });
   const timeLabel = skyClock.format(now)+' KST';
+  skyTime.dateTime = now.toISOString();
+  skyTime.textContent = timeLabel;
   if (insideMode) {
-    skyTime.dateTime = now.toISOString();
-    skyTime.textContent = timeLabel;
     positions.forEach((position,index) => { skyAngles[index].textContent = position; });
   } else {
-    ephemerisLabel.textContent = positions.join(' · ')+' · '+timeLabel+' 기준';
+    ephemerisLabel.textContent = positions.join(' · ');
   }
   draw();
 }
