@@ -1,0 +1,876 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>3D 천구</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#080e1a;color:#eaf4ff;font:15px/1.6 system-ui,sans-serif}
+main{max-width:1080px;margin:auto;padding:28px clamp(14px,4vw,42px)}
+.eyebrow{color:#8bb7e0;font-size:12px;letter-spacing:.2em}
+h1{font-size:clamp(28px,5vw,46px);line-height:1.2;margin:6px 0 8px}
+p{color:#a9bfd6;margin:0 0 18px}
+.view-controls,.observer,.time-controls{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:12px}
+.time-controls select{color:inherit;background:#111f33;border:1px solid #3b506b;border-radius:5px;padding:4px;font:inherit}
+.time-controls button{touch-action:manipulation}
+[hidden]{display:none!important}
+.view-controls button[aria-pressed=true]{background:#21415e;border-color:#72e7ef}
+.observer input{width:92px;margin-left:5px;color:inherit;background:#111f33;border:1px solid #3b506b;border-radius:5px;padding:4px;font:inherit}
+.inside-view canvas,.inside-view canvas:active{cursor:crosshair}
+.stage{position:relative;border:1px solid #263b57;border-radius:20px;overflow:hidden;background:radial-gradient(ellipse at center,#162940,#0a1221 76%)}
+canvas{display:block;width:100%;height:clamp(340px,62vh,660px);cursor:grab;touch-action:none}
+canvas:active{cursor:grabbing}
+.position-dot{position:absolute;z-index:1;width:9px;height:9px;border:1px solid #0a1525;border-radius:50%;background:#fff;box-shadow:0 0 0 2px #72e7ef;transform:translate(-50%,-50%);pointer-events:none}
+.coordinates{position:absolute;z-index:1;pointer-events:none;padding:6px 10px;border:1px solid #426385;border-radius:7px;background:#0a1525;color:#eaf4ff;font-size:13px;font-variant-numeric:tabular-nums;white-space:pre-line}
+.controls{position:absolute;left:12px;right:12px;top:12px;display:flex;justify-content:flex-end;flex-wrap:wrap;gap:6px;align-items:center;pointer-events:none}
+.controls button{pointer-events:auto}
+button,output{padding:4px 10px;color:inherit;background:#111f33;border:1px solid #3b506b;border-radius:7px;font:inherit}
+button{cursor:pointer}
+button:hover{background:#213959}
+button:focus-visible,canvas:focus-visible{outline:2px solid #72e7ef;outline-offset:-2px}
+output{font-variant-numeric:tabular-nums;min-width:64px;text-align:center}
+.legend{display:flex;flex-wrap:wrap;gap:6px 20px;margin-top:14px;color:#b9cee4}
+.legend span::before{content:"";display:inline-block;width:19px;border-top:2px solid var(--color);margin-right:7px;vertical-align:middle}
+small{display:block;color:#92a9c1;margin-top:7px}
+</style>
+</head>
+<body>
+<main>
+<header><div class="eyebrow">CELESTIAL SPHERE</div><h1>3D 천구</h1><p id="help">드래그로 회전하고, 휠로 확대·축소하세요. 천구 위에 마우스를 올리면 적경과 적위가 표시됩니다.</p></header>
+<div class="view-controls" role="group" aria-label="천구 시점">
+<button type="button" id="outside-mode" aria-pressed="true">천구 밖에서 보기</button>
+<button type="button" id="inside-mode" aria-pressed="false">관측지 하늘 보기</button>
+</div>
+<div class="time-controls" role="group" aria-label="시뮬레이션 날짜와 시간">
+<button type="button" id="day-back">−1일</button>
+<button type="button" id="day-forward">+1일</button>
+<label>시간 속도 <select id="time-speed">
+<option value="1">실시간 (1배)</option>
+<option value="10">10배속</option>
+<option value="100">100배속</option>
+<option value="1000">1000배속</option>
+</select></label>
+<button type="button" id="time-now">현재 시각으로</button>
+</div>
+<form id="observer" class="observer" hidden>
+<span>관측지 · 기본값 부산</span>
+<label>위도 <input id="latitude" type="number" min="-90" max="90" step="any" value="35.18" required></label>
+<label>경도 <input id="longitude" type="number" min="-180" max="180" step="any" value="129.08" required></label>
+<button type="submit">관측지 적용</button>
+</form>
+<div class="stage">
+<canvas tabindex="0" aria-label="회전 가능한 3D 천구" aria-describedby="help keys"></canvas>
+<div class="position-dot" id="position-dot" aria-hidden="true" hidden></div>
+<div class="coordinates" id="coordinates" hidden></div>
+<div class="controls"><button type="button" id="turn-left" aria-label="왼쪽으로 회전" title="왼쪽으로 회전">↶</button><button type="button" id="turn-right" aria-label="오른쪽으로 회전" title="오른쪽으로 회전">↷</button><button type="button" id="out" aria-label="축소">−</button><output id="zoom" aria-label="확대율">100%</output><button type="button" id="in" aria-label="확대">+</button><button type="button" id="reset">초기화</button></div>
+</div>
+<div class="legend" id="outside-legend"><span style="--color:#688bae">적경·적위 격자</span><span style="--color:#72e7ef">천구의 적도</span><span style="--color:#ffca73">황도</span><span style="--color:#c7abff">천구의 양극</span></div>
+<small id="outside-drag">좌우 드래그는 극축을 중심으로 천구를 돌립니다. 적위 +45° 이상 또는 −45° 이하인 극 부근에서 시작하면 극축의 방향을 바꿀 수 있습니다.</small>
+<small id="ephemeris"></small>
+<small id="outside-note">해와 달은 지구 중심 기준의 근사 위치입니다. 점선 테두리는 천구 뒷면에 있음을 뜻합니다.</small>
+<small id="keys">격자 숫자는 적경(h)과 적위(°)입니다. 점선은 천구의 뒷면입니다. 키보드 방향키로 회전하고, + / − 키로 크기를 조절할 수 있습니다.</small>
+<small id="inside-note" hidden>바깥 원은 천구의 윤곽, 안쪽 타원은 지평선입니다. 경로는 한국 시간 00:00부터 5분 간격으로 계산합니다. 금색 태양 경로는 다음 날 00:00까지, 연보라색 달 경로는 다음 날 01:00까지입니다. 실선과 채운 원은 지평선 위, 점선과 빈 원은 아래입니다. 달의 시차를 반영하며 대기 굴절은 제외합니다. 툴팁은 천구 앞면의 고도와 방위각을 표시합니다.</small>
+</main>
+<script>
+'use strict';
+const canvas = document.querySelector('canvas');
+const ctx = canvas.getContext('2d');
+const ephemerisLabel = document.querySelector('#ephemeris');
+const skyClock = new Intl.DateTimeFormat('ko-KR',{
+  timeZone:'Asia/Seoul', year:'numeric', month:'2-digit', day:'2-digit',
+  hour:'2-digit', minute:'2-digit', second:'2-digit', hour12:false
+});
+let bodies = [];
+let insideMode = false;
+const outsideButton = document.querySelector('#outside-mode');
+const insideButton = document.querySelector('#inside-mode');
+const observerForm = document.querySelector('#observer');
+const latitudeInput = document.querySelector('#latitude');
+const longitudeInput = document.querySelector('#longitude');
+const help = document.querySelector('#help');
+const outsideHelp = help.textContent;
+const outsideNotes = ['#outside-legend','#outside-drag','#outside-note','#keys'].map(id => document.querySelector(id));
+const insideNote = document.querySelector('#inside-note');
+let latitude = latitudeInput.valueAsNumber;
+let longitude = longitudeInput.valueAsNumber;
+let localFrame;
+let dailyTrackKey = '';
+let dailyTracks = [[],[]];
+let baseAzimuth = 180;
+const zoomLabel = document.querySelector('#zoom');
+const positionDot = document.querySelector('#position-dot');
+const coordinates = document.querySelector('#coordinates');
+const rad = Math.PI / 180;
+const skyElevationDegrees = 20;
+const skySin = Math.sin(skyElevationDegrees*rad);
+const skyCos = Math.cos(skyElevationDegrees*rad);
+const polarDragLimit = 45;
+const obliquity = 23.44 * rad;
+const colors = { grid:'#688bae', equator:'#72e7ef', ecliptic:'#ffca73', pole:'#c7abff' };
+const circle = (point, count = 240) => Array.from({length:count+1}, (_,i) => point(i / count * 2 * Math.PI));
+function celestial(ra, dec) {
+  return [Math.cos(dec)*Math.cos(ra), Math.sin(dec), Math.cos(dec)*Math.sin(ra)];
+}
+const curves = [];
+for (let dec = -75; dec <= 75; dec += 15) {
+  if (dec !== 0) curves.push({points:circle(ra => celestial(ra,dec*rad)), color:colors.grid, width:0.8});
+}
+for (let hour = 0; hour < 12; hour++) {
+  curves.push({points:circle(t => celestial(hour*15*rad,t)), color:colors.grid, width:0.8});
+}
+curves.push(
+  {points:circle(ra => celestial(ra,0)), color:colors.equator, width:2},
+  {points:circle(t => [Math.cos(t),Math.sin(t)*Math.sin(obliquity),Math.sin(t)*Math.cos(obliquity)]), color:colors.ecliptic, width:2}
+);
+const gridLabels = [];
+const rightAscensionLabelLatitudes = [0,15,-15,30,-30,45,-45,60,-60];
+for (let hour=0; hour<24; hour++) {
+  gridLabels.push({
+    text:hour+'h',
+    color:'#b5d7fa',
+    anchors:rightAscensionLabelLatitudes.map(dec => celestial(hour*15*rad,dec*rad))
+  });
+}
+for (let dec=-75; dec<=75; dec+=15) {
+  gridLabels.push({
+    text:(dec > 0 ? '+' : dec < 0 ? '−' : '')+Math.abs(dec)+'°',
+    color:dec === 0 ? colors.equator : '#ddd0ff',
+    anchors:circle(ra => celestial(ra,dec*rad),48).slice(0,-1),
+    preferDepth:true
+  });
+}
+function sunFacingView(sun) {
+  const yaw = (sun.ra-90)*rad;
+  const pitch = 20*rad;
+  const cy = Math.cos(yaw), sy = Math.sin(yaw);
+  const cp = Math.cos(pitch), sp = Math.sin(pitch);
+  return [[cy,0,sy], [sp*sy,cp,-sp*cy], [-cp*sy,sp,cp*cy]];
+}
+let view, zoom = 1, drag = null;
+let skyRotation = 0;
+let width, height, radius, centerX, centerY;
+let pointer = null;
+function rotateView(axis, angle) {
+  const cosine = Math.cos(angle);
+  const sine = Math.sin(angle);
+  const across = view[axis];
+  const front = view[2];
+  view[axis] = across.map((value,i) => cosine*value+sine*front[i]);
+  view[2] = front.map((value,i) => cosine*value-sine*across[i]);
+}
+function rotateAroundPoles(angle) {
+  const cosine = Math.cos(angle);
+  const sine = Math.sin(angle);
+  // Rotate in the celestial equatorial plane, leaving the pole axis fixed.
+  view = view.map(([x,y,z]) => [cosine*x+sine*z,y,cosine*z-sine*x]);
+}
+function project([x,y,z]) {
+  const [horizontal,vertical,depth] = view.map(row => row[0]*x+row[1]*y+row[2]*z);
+  return [centerX+radius*horizontal,centerY-radius*vertical,depth];
+}
+function celestialAt(screenX, screenY) {
+  const horizontal = (screenX-centerX)/radius;
+  const vertical = (centerY-screenY)/radius;
+  const depthSquared = 1-horizontal**2-vertical**2;
+  if (depthSquared < -1e-12) return null;
+
+  // The view basis is orthonormal, so its transpose maps back to celestial space.
+  const frontDepth = Math.sqrt(Math.max(0,depthSquared));
+  const [right,up,front] = view;
+  const [x,y,z] = right.map((value,i) => horizontal*value+vertical*up[i]+frontDepth*front[i]);
+  const ra = Math.hypot(x,z) < 1e-10 ? null : (Math.atan2(z,x)/rad+360)%360;
+  const dec = Math.asin(Math.max(-1,Math.min(1,y)))/rad;
+  return {ra,dec};
+}
+function formatCoordinates({ra,dec}) {
+  const minutes = ra === null ? 0 : Math.round(ra*4)%1440;
+  const raText = ra === null ? '정의되지 않음' : Math.floor(minutes/60)+'h '+String(minutes%60).padStart(2,'0')+'m';
+  const roundedDec = Math.round(dec*100)/100;
+  const decText = (roundedDec < 0 ? '−' : '+')+Math.abs(roundedDec).toFixed(2)+'°';
+  return {raText,decText};
+}
+function horizonFrame(time) {
+  // Greenwich mean sidereal angle, using UTC as an approximation to UT1.
+  const days = (time.getTime()-Date.UTC(2000,0,1,12))/86400000;
+  const theta = ((280.46061837+360.98564736629*days+longitude)%360)*rad;
+  const phi = latitude*rad;
+  const sinTheta = Math.sin(theta), cosTheta = Math.cos(theta);
+  const sinPhi = Math.sin(phi), cosPhi = Math.cos(phi);
+  return {
+    east:[-sinTheta,0,cosTheta],
+    north:[-sinPhi*cosTheta,cosPhi,-sinPhi*sinTheta],
+    up:[cosPhi*cosTheta,sinPhi,cosPhi*sinTheta]
+  };
+}
+function horizontalCoordinates(point, frame, distanceInEarthRadii = Infinity) {
+  const dot = axis => axis[0]*point[0]+axis[1]*point[1]+axis[2]*point[2];
+  const east = dot(frame.east);
+  const north = dot(frame.north);
+  const up = dot(frame.up)-1/distanceInEarthRadii;
+  return {
+    altitude:Math.atan2(up,Math.hypot(east,north))/rad,
+    azimuth:Math.hypot(east,north) < 1e-12 ? null : (Math.atan2(east,north)/rad+360)%360
+  };
+}
+function projectSky({altitude,azimuth}) {
+  const angle = ((azimuth ?? 0)-baseAzimuth+skyRotation)*rad;
+  const elevation = altitude*rad;
+  const horizontal = Math.cos(elevation);
+  const right = horizontal*Math.sin(angle);
+  const forward = horizontal*Math.cos(angle);
+  const up = Math.sin(elevation);
+  return [centerX+radius*right,centerY-radius*(up*skyCos+forward*skySin),altitude];
+}
+function skyAt(x,y) {
+  const right = (x-centerX)/radius;
+  const screenUp = (centerY-y)/radius;
+  const depthSquared = 1-right**2-screenUp**2;
+  if (depthSquared < -1e-12) return null;
+  const depth = Math.sqrt(Math.max(0,depthSquared));
+  const forward = screenUp*skySin-depth*skyCos;
+  const up = screenUp*skyCos+depth*skySin;
+  const horizontal = Math.hypot(right,forward);
+  return {
+    altitude:Math.atan2(up,horizontal)/rad,
+    azimuth:horizontal < 1e-9 ? null : (Math.atan2(right,forward)/rad+baseAzimuth-skyRotation+720)%360
+  };
+}
+function formatHorizontal({altitude,azimuth}) {
+  return {
+    altText:altitude.toFixed(1)+'°',
+    azText:azimuth === null ? '정의되지 않음' : (Math.round(azimuth*10)%3600/10).toFixed(1)+'°'
+  };
+}
+function updateCoordinates() {
+  if (!pointer || !radius) {
+    coordinates.hidden = true;
+    positionDot.hidden = true;
+    return;
+  }
+  const box = canvas.getBoundingClientRect();
+  const x = pointer.x-box.left;
+  const y = pointer.y-box.top;
+  const position = x >= 0 && x < width && y >= 0 && y < height ? (insideMode ? skyAt(x,y) : celestialAt(x,y)) : null;
+  coordinates.hidden = !position;
+  positionDot.hidden = !position;
+  if (!position) return;
+
+  positionDot.style.left = x+'px';
+  positionDot.style.top = y+'px';
+
+  if (insideMode) {
+    const {altText,azText} = formatHorizontal(position);
+    coordinates.textContent = '고도  '+altText+'\n방위각  '+azText;
+  } else {
+    const {raText,decText} = formatCoordinates(position);
+    coordinates.textContent = '적경 (RA)  '+raText+'\n적위 (Dec)  '+decText;
+  }
+  const tipWidth = coordinates.offsetWidth;
+  const tipHeight = coordinates.offsetHeight;
+  const left = x+14+tipWidth <= width-6 ? x+14 : x-tipWidth-14;
+  const top = y+14+tipHeight <= height-6 ? y+14 : y-tipHeight-14;
+  coordinates.style.left = Math.max(6,left)+'px';
+  coordinates.style.top = Math.max(6,top)+'px';
+}
+function stroke(points, front) {
+  ctx.beginPath();
+  for (let i = 1; i < points.length; i++) {
+    let a = points[i-1], b = points[i];
+    const aVisible = (a[2] >= 0) === front;
+    const bVisible = (b[2] >= 0) === front;
+    if (!aVisible && !bVisible) continue;
+    if (aVisible !== bVisible) {
+      const t = a[2] / (a[2]-b[2]);
+      const edge = [a[0]+t*(b[0]-a[0]), a[1]+t*(b[1]-a[1]), 0];
+      if (aVisible) b = edge;
+      else a = edge;
+    }
+    if (i === 1 || !aVisible || ((points[i-2][2] >= 0) !== front)) ctx.moveTo(a[0],a[1]);
+    ctx.lineTo(b[0],b[1]);
+  }
+  ctx.stroke();
+}
+// Orbital elements and lunar perturbations adapted from Paul Schlyter:
+// https://www.stjarnhimlen.se/comp/ppcomp.html
+function trueAnomaly(meanDegrees, eccentricity) {
+  const mean = (meanDegrees % 360)*rad;
+  let eccentric = mean;
+  for (let i=0; i<5; i++) {
+    eccentric -= (eccentric-eccentricity*Math.sin(eccentric)-mean)/(1-eccentricity*Math.cos(eccentric));
+  }
+  return Math.atan2(Math.sqrt(1-eccentricity**2)*Math.sin(eccentric),Math.cos(eccentric)-eccentricity)/rad;
+}
+function solarAndLunarPositions(time) {
+  const days = (time.getTime()-Date.UTC(1999,11,31))/86400000;
+  const sin = degrees => Math.sin(degrees*rad);
+  const cos = degrees => Math.cos(degrees*rad);
+  const sunMean = 356.0470+0.9856002585*days;
+  const sunPerihelion = 282.9404+4.70935e-5*days;
+  const sunLongitude = sunPerihelion+trueAnomaly(sunMean,0.016709-1.151e-9*days);
+  const node = 125.1228-0.0529538083*days;
+  const perigee = 318.0634+0.1643573223*days;
+  const moonMean = 115.3654+13.0649929509*days;
+  const argument = perigee+trueAnomaly(moonMean,0.0549);
+  const moonMeanLongitude = node+perigee+moonMean;
+  const D = moonMeanLongitude-sunMean-sunPerihelion;
+  const F = moonMeanLongitude-node;
+  const M = moonMean;
+  const S = sunMean;
+  const moonLongitude = node+Math.atan2(sin(argument)*cos(5.1454),cos(argument))/rad
+    -1.274*sin(M-2*D)+0.658*sin(2*D)-0.186*sin(S)-0.059*sin(2*M-2*D)
+    -0.057*sin(M-2*D+S)+0.053*sin(M+2*D)+0.046*sin(2*D-S)+0.041*sin(M-S)
+    -0.035*sin(D)-0.031*sin(M+S)-0.015*sin(2*F-2*D)+0.011*sin(M-4*D);
+  const moonLatitude = Math.asin(sin(argument)*sin(5.1454))/rad
+    -0.173*sin(F-2*D)-0.055*sin(M-F-2*D)-0.046*sin(M+F-2*D)
+    +0.033*sin(F+2*D)+0.017*sin(2*M+F);
+  // The lunar orbit radius and two main distance perturbations are in Earth radii.
+  const moonDistance = 60.2666*(1-0.0549**2)/(1+0.0549*cos(argument-perigee))
+    -0.58*cos(M-2*D)-0.46*cos(2*D);
+  const tilt = 23.4393-3.563e-7*days;
+  function equatorial(longitude,latitude) {
+    const x = cos(longitude)*cos(latitude);
+    const east = sin(longitude)*cos(latitude);
+    const north = sin(latitude);
+    const y = east*sin(tilt)+north*cos(tilt);
+    const z = east*cos(tilt)-north*sin(tilt);
+    return {point:[x,y,z],ra:(Math.atan2(z,x)/rad+360)%360,dec:Math.atan2(y,Math.hypot(x,z))/rad};
+  }
+  return [
+    {name:'태양',color:'#ffbd4a',...equatorial(sunLongitude,0)},
+    {name:'달',color:'#e2edff',distanceInEarthRadii:moonDistance,...equatorial(moonLongitude,moonLatitude)}
+  ];
+}
+const millisecondsPerDay = 86400000;
+const timeSpeedSelect = document.querySelector('#time-speed');
+let timeSpeed = 1;
+let wallAnchor = Date.now();
+let simulatedAnchor = wallAnchor;
+
+function simulatedTime(wallTime = Date.now()) {
+  return simulatedAnchor+(wallTime-wallAnchor)*timeSpeed;
+}
+function changeSimulationSpeed(speed) {
+  const wallTime = Date.now();
+  simulatedAnchor = simulatedTime(wallTime);
+  wallAnchor = wallTime;
+  timeSpeed = speed;
+  refreshBodies();
+}
+function shiftDay(direction) {
+  simulatedAnchor += direction*millisecondsPerDay;
+  refreshBodies();
+}
+function bindDayButton(button,direction) {
+  let pointerId = null;
+  let delay;
+  let repeat;
+  function stop() {
+    clearTimeout(delay);
+    clearInterval(repeat);
+    pointerId = null;
+  }
+  button.addEventListener('pointerdown',event => {
+    if (event.button !== 0 || pointerId !== null) return;
+    button.setPointerCapture(event.pointerId);
+    pointerId = event.pointerId;
+    shiftDay(direction);
+    delay = setTimeout(() => {
+      shiftDay(direction);
+      repeat = setInterval(() => shiftDay(direction),180);
+    },350);
+  });
+  for (const type of ['pointerup','pointercancel','lostpointercapture']) {
+    button.addEventListener(type,event => {
+      if (event.pointerId === pointerId) stop();
+    });
+  }
+  button.addEventListener('click',event => {
+    if (event.detail === 0) shiftDay(direction);
+  });
+  window.addEventListener('blur',stop);
+}
+bindDayButton(document.querySelector('#day-back'),-1);
+bindDayButton(document.querySelector('#day-forward'),1);
+timeSpeedSelect.addEventListener('change',() => changeSimulationSpeed(Number(timeSpeedSelect.value)));
+document.querySelector('#time-now').onclick = () => {
+  simulatedAnchor = wallAnchor = Date.now();
+  timeSpeed = 1;
+  timeSpeedSelect.value = '1';
+  refreshBodies();
+};
+const trackStep = 5*60000;
+
+function trackHorizonCrossing(bodyIndex, start, end, startsAbove) {
+  let position;
+  while (end-start > 1000) {
+    const time = new Date(Math.floor((start+end)/2));
+    const body = solarAndLunarPositions(time)[bodyIndex];
+    position = horizontalCoordinates(body.point,horizonFrame(time),body.distanceInEarthRadii);
+    if ((position.altitude >= 0) === startsAbove) start = time.getTime();
+    else end = time.getTime();
+  }
+  return {...position,altitude:0};
+}
+
+function refreshDailyTracks(now) {
+  const day = millisecondsPerDay;
+  const kstOffset = 9*3600000;
+  const start = Math.floor((now.getTime()+kstOffset)/day)*day-kstOffset;
+  const key = [start,latitude,longitude].join('/');
+  if (key === dailyTrackKey) return;
+  dailyTracks = [[],[]];
+  const moonTrackDuration = day+3600000;
+  for (let offset=0; offset<=moonTrackDuration; offset+=trackStep) {
+    const time = new Date(start+offset);
+    const frame = horizonFrame(time);
+    solarAndLunarPositions(time).forEach((body,index) => {
+      if (index === 0 && offset > day) return;
+      const track = dailyTracks[index];
+      const position = horizontalCoordinates(body.point,frame,body.distanceInEarthRadii);
+      const previous = track.at(-1);
+      if (previous && previous.altitude*position.altitude < 0) {
+        track.push(trackHorizonCrossing(index,start+offset-trackStep,start+offset,previous.altitude > 0));
+      }
+      track.push(position);
+      if (offset === day/2 && index === 0) baseAzimuth = body.dec <= latitude ? 180 : 0;
+    });
+  }
+  dailyTrackKey = key;
+}
+function refreshBodies() {
+  const now = new Date(simulatedTime());
+  bodies = solarAndLunarPositions(now);
+  if (insideMode) {
+    localFrame = horizonFrame(now);
+    refreshDailyTracks(now);
+  }
+  const positions = bodies.map(body => {
+    if (insideMode) {
+      body.horizontal = horizontalCoordinates(body.point,localFrame,body.distanceInEarthRadii);
+      const {altText,azText} = formatHorizontal(body.horizontal);
+      const status = body.horizontal.altitude < 0 ? ' (지평선 아래)' : '';
+      return body.name+' 고도 '+altText+' / 방위각 '+azText+status;
+    }
+    const {raText,decText} = formatCoordinates(body);
+    return body.name+' '+raText+' / '+decText;
+  });
+  ephemerisLabel.textContent = positions.join(' · ')+' · '+skyClock.format(now)+' KST 기준';
+  draw();
+}
+function drawBodies(markers) {
+  // Preserve Sun-then-Moon order regardless of projected depth.
+  const insideMarkerRadius = 14;
+  const close = markers.length === 2 && Math.hypot(
+    markers[0].screen[0]-markers[1].screen[0],markers[0].screen[1]-markers[1].screen[1]
+  ) < (insideMode ? 50 : 35);
+  for (const {name,color,screen:[x,y,depth]} of markers) {
+    const front = depth >= 0;
+    ctx.globalAlpha = insideMode || front ? 1 : 0.65;
+    ctx.setLineDash(insideMode || front ? [] : [2,2]);
+    ctx.beginPath();
+    const markerRadius = insideMode ? insideMarkerRadius : name === '태양' ? 7 : 5;
+    ctx.arc(x,y,markerRadius,0,2*Math.PI);
+    ctx.fillStyle = color;
+    ctx.strokeStyle = front ? '#0a1525' : color;
+    ctx.lineWidth = 1.5;
+    if (front) ctx.fill();
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.font = '600 13px system-ui';
+    ctx.textBaseline = 'middle';
+    ctx.textAlign = close && name === '태양' ? 'right' : 'left';
+    const labelOffset = insideMode ? markerRadius+5 : 11;
+    const labelX = x+(ctx.textAlign === 'right' ? -labelOffset : labelOffset);
+    ctx.strokeStyle = '#0a1525';
+    ctx.lineWidth = 3;
+    ctx.strokeText(name,labelX,y);
+    ctx.fillText(name,labelX,y);
+  }
+  ctx.globalAlpha = 1;
+}
+function drawGridLabels() {
+  const occupied = bodies.map(({point}) => {
+    const [x,y] = project(point);
+    return {x,y,halfWidth:45,halfHeight:12};
+  });
+  for (const direction of [-1,1]) {
+    const [x,y] = project([0,direction,0]);
+    occupied.push({x,y,halfWidth:10,halfHeight:9});
+    occupied.push({x,y:y-(y <= centerY ? 16 : -16),halfWidth:42,halfHeight:9});
+  }
+  ctx.font = '600 11px system-ui';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.lineJoin = 'round';
+  ctx.lineWidth = 3;
+  ctx.strokeStyle = '#101d2e';
+  for (const {text,color,anchors,preferDepth} of gridLabels) {
+    const halfWidth = ctx.measureText(text).width/2+4;
+    const halfHeight = 8;
+    const visible = anchors.map(project).filter(([x,y,depth]) =>
+      depth > 0.12 && x >= halfWidth && x <= width-halfWidth &&
+      y >= halfHeight && y <= height-halfHeight
+    );
+    if (preferDepth) visible.sort((a,b) => b[2]-a[2]);
+    const spot = visible.find(([x,y]) => !occupied.some(box =>
+      Math.abs(box.x-x) < box.halfWidth+halfWidth &&
+      Math.abs(box.y-y) < box.halfHeight+halfHeight
+    ));
+    if (!spot) continue;
+    const [x,y] = spot;
+    ctx.fillStyle = color;
+    ctx.strokeText(text,x,y);
+    ctx.fillText(text,x,y);
+    occupied.push({x,y,halfWidth,halfHeight});
+  }
+}
+function drawSkyTrack(points,color) {
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 2;
+  ctx.lineJoin = 'round';
+  const projected = points.map(projectSky);
+  ctx.setLineDash([4,5]);
+  stroke(projected,false);
+  ctx.setLineDash([]);
+  stroke(projected,true);
+}
+function drawObserver() {
+  ctx.save();
+  ctx.translate(centerX,centerY);
+  ctx.lineJoin = 'round';
+  ctx.lineWidth = 1.5;
+  ctx.strokeStyle = '#0a1525';
+
+  ctx.fillStyle = '#61738d';
+  ctx.beginPath();
+  ctx.moveTo(-4,-12);
+  ctx.lineTo(4,-12);
+  ctx.lineTo(5,0);
+  ctx.lineTo(1,0);
+  ctx.lineTo(0,-7);
+  ctx.lineTo(-1,0);
+  ctx.lineTo(-5,0);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+
+  ctx.fillStyle = '#76beca';
+  ctx.beginPath();
+  ctx.moveTo(-4,-20);
+  ctx.quadraticCurveTo(-8,-19,-8,-15);
+  ctx.lineTo(-8,-10);
+  ctx.lineTo(-4,-10);
+  ctx.lineTo(-4,-12);
+  ctx.lineTo(4,-12);
+  ctx.lineTo(4,-10);
+  ctx.lineTo(8,-10);
+  ctx.lineTo(8,-15);
+  ctx.quadraticCurveTo(8,-19,4,-20);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+
+  ctx.fillStyle = '#b2c1d4';
+  ctx.beginPath();
+  ctx.arc(0,-23,4.5,0,2*Math.PI);
+  ctx.fill();
+  ctx.stroke();
+  ctx.restore();
+}
+function drawSky() {
+  ctx.setLineDash([]);
+  ctx.fillStyle = '#b5d7fa';
+  ctx.font = '600 12px system-ui';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(centerX,centerY,radius,0,2*Math.PI);
+  ctx.clip();
+  ctx.beginPath();
+  ctx.ellipse(centerX,centerY,radius,radius*Math.abs(skySin),0,0,2*Math.PI);
+  ctx.fillStyle = 'rgba(156,183,212,0.12)';
+  ctx.fill();
+  ctx.strokeStyle = '#9cb7d4';
+  ctx.lineWidth = 1;
+  ctx.stroke();
+  drawSkyTrack(dailyTracks[0],'#ffbd4a');
+  drawSkyTrack(dailyTracks[1],'#c7abff');
+  ctx.restore();
+
+  for (const [name,azimuth] of [['북',0],['동',90],['남',180],['서',270]]) {
+    const [x,y] = projectSky({altitude:0,azimuth});
+    const distance = Math.hypot(x-centerX,y-centerY);
+    const scale = distance ? 1+12/distance : 1;
+    ctx.fillText(name,centerX+(x-centerX)*scale,centerY+(y-centerY)*scale);
+  }
+  drawObserver();
+  const markers = bodies.map(body => ({...body,screen:projectSky(body.horizontal)}));
+  drawBodies(markers);
+}
+function draw() {
+  if (!width || !height) return;
+  centerX = width / 2;
+  centerY = height / 2 + 5;
+  radius = Math.min(width,height)*0.355*zoom;
+  ctx.clearRect(0,0,width,height);
+  ctx.beginPath();
+  ctx.arc(centerX,centerY,radius,0,Math.PI*2);
+  ctx.fillStyle = '#13243a';
+  ctx.fill();
+  ctx.strokeStyle = insideMode ? '#9cb7d4' : '#426385';
+  ctx.lineWidth = 1;
+  ctx.stroke();
+  if (insideMode) {
+    drawSky();
+    updateCoordinates();
+    return;
+  }
+  const projected = curves.map(curve => ({...curve, points:curve.points.map(project)}));
+  for (const front of [false,true]) {
+    ctx.setLineDash(front ? [] : [3,5]);
+    ctx.globalAlpha = front ? 1 : 0.42;
+    for (const {points,color,width:lineWidth} of projected) {
+      ctx.strokeStyle = color;
+      ctx.lineWidth = lineWidth;
+      stroke(points,front);
+    }
+  }
+  ctx.globalAlpha = 1;
+  ctx.setLineDash([]);
+  drawGridLabels();
+  for (const [direction,label] of [[1,'북극'],[-1,'남극']]) {
+    const [x,y,z] = project([0,direction,0]);
+    ctx.globalAlpha = z >= 0 ? 1 : 0.65;
+    ctx.fillStyle = colors.pole;
+    ctx.beginPath();
+    ctx.arc(x,y,4,0,Math.PI*2);
+    ctx.fill();
+    ctx.font = '600 13px system-ui';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('천구의 ' + label,x,y-(y <= centerY ? 16 : -16));
+  }
+  ctx.globalAlpha = 1;
+  drawBodies(bodies.map(body => ({...body,screen:project(body.point)})));
+  updateCoordinates();
+}
+function resize() {
+  const box = canvas.getBoundingClientRect();
+  width = box.width;
+  height = box.height;
+  const density = Math.min(window.devicePixelRatio || 1, 2);
+  canvas.width = Math.round(width*density);
+  canvas.height = Math.round(height*density);
+  ctx.setTransform(density,0,0,density,0,0);
+  draw();
+}
+function changeZoom(value) {
+  zoom = Math.min(2.5,Math.max(0.45,value));
+  zoomLabel.value = Math.round(zoom*100) + '%';
+  draw();
+}
+canvas.addEventListener('pointerdown', event => {
+  if (insideMode || event.button !== 0 || drag) return;
+  const box = canvas.getBoundingClientRect();
+  const start = celestialAt(event.clientX-box.left,event.clientY-box.top);
+  if (!start) return;
+  canvas.setPointerCapture(event.pointerId);
+  drag = {
+    id:event.pointerId,
+    x:event.clientX,
+    y:event.clientY,
+    tiltAxis:Math.abs(start.dec) >= polarDragLimit-1e-9
+  };
+});
+canvas.addEventListener('pointermove', event => {
+  if (event.pointerType !== 'touch') pointer = {x:event.clientX,y:event.clientY};
+  if (drag?.id !== event.pointerId) {
+    updateCoordinates();
+    return;
+  }
+  const horizontalAngle = (drag.x-event.clientX)*0.009;
+  if (drag.tiltAxis) rotateView(0,horizontalAngle);
+  else rotateAroundPoles(horizontalAngle);
+  rotateView(1,(drag.y-event.clientY)*0.009);
+  drag.x = event.clientX;
+  drag.y = event.clientY;
+  draw();
+});
+canvas.addEventListener('pointerleave', () => {
+  pointer = null;
+  updateCoordinates();
+});
+for (const type of ['pointerup','pointercancel','lostpointercapture']) {
+  canvas.addEventListener(type,event => { if (drag?.id === event.pointerId) drag = null; });
+}
+canvas.addEventListener('wheel', event => {
+  event.preventDefault();
+  pointer = {x:event.clientX,y:event.clientY};
+  const delta = event.deltaY * (event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? height : 1);
+  changeZoom(zoom*Math.exp(-Math.max(-200,Math.min(200,delta))*0.0016));
+},{passive:false});
+function bindZoomButton(button, direction) {
+  const step = () => changeZoom(zoom*1.15**direction);
+  let activePointer = null;
+  let frame = 0;
+  let previousTime = 0;
+  let repeated = false;
+
+  function animate(time) {
+    repeated = true;
+    const nextZoom = zoom*Math.exp(direction*Math.min(time-previousTime,50)*0.0014);
+    previousTime = time;
+    if (nextZoom !== zoom && (direction > 0 ? zoom < 2.5 : zoom > 0.45)) changeZoom(nextZoom);
+    frame = requestAnimationFrame(animate);
+  }
+  button.addEventListener('pointerdown', event => {
+    if (event.button !== 0 || activePointer !== null) return;
+    button.setPointerCapture(event.pointerId);
+    activePointer = event.pointerId;
+    repeated = false;
+    const repeatAt = performance.now()+200;
+    previousTime = repeatAt;
+    function waitForHold(time) {
+      if (time >= repeatAt) animate(time);
+      else frame = requestAnimationFrame(waitForHold);
+    }
+    frame = requestAnimationFrame(waitForHold);
+  });
+  function stop() {
+    cancelAnimationFrame(frame);
+    activePointer = null;
+  }
+  button.addEventListener('pointerup', event => {
+    if (event.pointerId !== activePointer) return;
+    stop();
+    if (!repeated) step();
+  });
+  for (const type of ['pointercancel','lostpointercapture']) {
+    button.addEventListener(type,event => {
+      if (event.pointerId === activePointer) stop();
+    });
+  }
+  window.addEventListener('blur',stop);
+  button.addEventListener('click',event => {
+    if (event.detail === 0) step();
+  });
+}
+bindZoomButton(document.querySelector('#out'),-1);
+bindZoomButton(document.querySelector('#in'),1);
+function turnHorizontally(degrees) {
+  if (insideMode) skyRotation = ((skyRotation+degrees)%360+360)%360;
+  else rotateAroundPoles(-degrees*rad);
+  draw();
+}
+let turnFrame = 0;
+let remainingTurn = 0;
+
+function stopTurning() {
+  cancelAnimationFrame(turnFrame);
+  turnFrame = 0;
+  remainingTurn = 0;
+}
+function animateQuarterTurn(direction) {
+  cancelAnimationFrame(turnFrame);
+  const distance = remainingTurn+direction*90;
+  const start = performance.now();
+  const duration = 500*Math.max(1,Math.abs(distance)/90);
+  let previous = 0;
+  function animate(time) {
+    const progress = Math.min(1,Math.max(0,(time-start)/duration));
+    const eased = progress*progress*(3-2*progress);
+    const moved = distance*eased;
+    remainingTurn = distance-moved;
+    if (progress === 1 && insideMode) {
+      skyRotation = ((skyRotation+moved-previous)%360+360)%360;
+      if (Math.abs(skyRotation-Math.round(skyRotation/90)*90) < 1e-8) {
+        skyRotation = Math.round(skyRotation/90)*90%360;
+      }
+      draw();
+    } else {
+      turnHorizontally(moved-previous);
+    }
+    previous = moved;
+    turnFrame = progress < 1 ? requestAnimationFrame(animate) : 0;
+  }
+  turnFrame = requestAnimationFrame(animate);
+}
+for (const [selector,direction] of [['#turn-left',-1],['#turn-right',1]]) {
+  const button = document.querySelector(selector);
+  button.addEventListener('pointerdown',event => {
+    if (event.button === 0 && event.isPrimary) animateQuarterTurn(direction);
+  });
+  button.addEventListener('click',event => {
+    if (event.detail === 0) animateQuarterTurn(direction);
+  });
+}
+document.querySelector('#reset').onclick = () => {
+  stopTurning();
+  if (insideMode) skyRotation = 0;
+  else view = startupView.slice();
+  changeZoom(1);
+};
+canvas.addEventListener('keydown',event => {
+  switch(event.key) {
+    case 'ArrowLeft':
+    case 'ArrowRight':
+      event.preventDefault();
+      if (!event.repeat) animateQuarterTurn(event.key === 'ArrowLeft' ? -1 : 1);
+      return;
+    case 'ArrowUp': if (insideMode) return; rotateView(1,8*rad); break;
+    case 'ArrowDown': if (insideMode) return; rotateView(1,-8*rad); break;
+    case '+': case '=': changeZoom(zoom*1.15); break;
+    case '-': changeZoom(zoom/1.15); break;
+    default: return;
+  }
+  event.preventDefault();
+  draw();
+});
+function selectView(isInside) {
+  if (insideMode !== isInside) {
+    stopTurning();
+    drag = null;
+  }
+  insideMode = isInside;
+  pointer = null;
+  canvas.parentElement.classList.toggle('inside-view',insideMode);
+  canvas.setAttribute('aria-label',insideMode ? '관측지 하늘 지도' : '회전 가능한 3D 천구');
+  canvas.setAttribute('aria-describedby',insideMode ? 'help inside-note' : 'help keys');
+  outsideButton.setAttribute('aria-pressed',String(!insideMode));
+  insideButton.setAttribute('aria-pressed',String(insideMode));
+  observerForm.hidden = !insideMode;
+  insideNote.hidden = !insideMode;
+  for (const note of outsideNotes) note.hidden = insideMode;
+  help.textContent = insideMode
+    ? '회전 버튼으로 지도 방향을 바꾸세요. 마우스를 올리면 고도와 방위각을 볼 수 있습니다.'
+    : outsideHelp;
+  refreshBodies();
+}
+outsideButton.onclick = () => selectView(false);
+insideButton.onclick = () => selectView(true);
+observerForm.addEventListener('submit',event => {
+  event.preventDefault();
+  latitude = latitudeInput.valueAsNumber;
+  longitude = longitudeInput.valueAsNumber;
+  refreshBodies();
+});
+refreshBodies();
+const startupView = sunFacingView(bodies[0]);
+view = startupView.slice();
+new ResizeObserver(resize).observe(canvas);
+resize();
+let lastClockSecond = null;
+setInterval(() => {
+  const clockSecond = Math.floor(simulatedTime()/1000);
+  if (clockSecond === lastClockSecond) return;
+  lastClockSecond = clockSecond;
+  refreshBodies();
+},200);
+document.addEventListener('visibilitychange',() => {
+  if (!document.hidden) refreshBodies();
+});
+</script>
+</body>
+</html>
