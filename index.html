@@ -55,6 +55,22 @@ output{font-variant-numeric:tabular-nums;min-width:64px;text-align:center}
 .legend span::before{content:"";display:inline-block;width:19px;border-top:2px solid var(--color);margin-right:7px;vertical-align:middle}
 details{font-size:12px;color:#a9bfd6;margin-top:4px}
 small{display:block;color:#92a9c1;margin-top:7px}
+@media (max-width:600px){
+  main{height:auto;min-height:100svh;padding:6px 8px 12px}
+  .title-row{flex-wrap:nowrap;gap:4px}
+  .title-row h1{flex:none;font-size:clamp(16px,5vw,23px);margin:6px 0}
+  .title-row .view-controls{flex-wrap:nowrap;gap:4px;margin:0 0 0 auto}
+  .view-controls button{font-size:clamp(10px,3vw,13px);padding:4px 5px;white-space:nowrap}
+  .simulation-clock{order:1;margin:2px 0;font-size:14px}
+  .sky-layout{order:2;flex:none}
+  .stage{flex:none;height:clamp(250px,110vw,560px);border-radius:12px}
+  .controls{top:6px;left:6px;right:6px;gap:4px}
+  .controls button,.controls output{font-size:12px;padding:3px 7px}
+  .controls output{min-width:48px}
+  main > #help{order:3;margin:8px 0 6px}
+  .setup-controls{order:4}
+  main > :is(.legend,small,details){order:5}
+}
 </style>
 </head>
 <body>
@@ -63,8 +79,8 @@ small{display:block;color:#92a9c1;margin-top:7px}
 <div class="view-controls" role="group" aria-label="천구 시점">
 <button type="button" id="outside-mode" aria-pressed="true">천구 밖에서 보기</button>
 <button type="button" id="inside-mode" aria-pressed="false">관측지 하늘 보기</button>
-</div></div>
-<p id="help">드래그로 회전하고, 휠로 확대·축소하세요. 태양·달이나 천구 앞면의 행성·별에 마우스를 올리면 해당 천체의 적경·적위가 표시됩니다.</p></header>
+</div></div></header>
+<p id="help">드래그로 회전하고, 휠로 확대·축소하세요. 태양·달이나 천구 앞면의 행성·별에 마우스를 올리면 해당 천체의 적경·적위가 표시됩니다.</p>
 <div class="setup-controls">
 <div class="time-controls" role="group" aria-label="시뮬레이션 날짜와 시간">
 <button type="button" id="day-back">−1일</button>
@@ -930,7 +946,9 @@ function draw() {
   if (!width || !height) return;
   centerX = width / 2;
   centerY = height / 2 + 5;
-  radius = Math.min(width,height)*0.355*zoom;
+  const compactLayout = window.matchMedia('(max-width:600px)').matches;
+  const radiusRatio = compactLayout ? 0.44 : 0.355;
+  radius = Math.min(width,height)*radiusRatio*zoom;
   ctx.clearRect(0,0,width,height);
   ctx.beginPath();
   ctx.arc(centerX,centerY,radius,0,Math.PI*2);
