@@ -24,6 +24,7 @@ p{color:#a9bfd6;margin:0 0 18px}
 .sky-readout time{color:#d6e5f5}
 .sky-readout .sun{color:#ffbd4a}
 .sky-readout .moon{color:#d9c5ff}
+.sky-readout .rise-set{padding-top:8px;border-top:1px solid #263b57}
 @media (min-width:850px){
   .sky-layout.with-readout{grid-template-columns:minmax(0,1fr) auto;align-items:start}
 }
@@ -78,6 +79,9 @@ small{display:block;color:#92a9c1;margin-top:7px}
 <time id="sky-time"></time>
 <div class="sun" id="sky-sun"></div>
 <div class="moon" id="sky-moon"></div>
+<div class="sun rise-set" id="sun-rise-set"></div>
+<div class="moon" id="moon-rise-set"></div>
+<small>해수면의 평탄한 지평선 기준 예상 시각</small>
 </aside>
 </div>
 <div class="legend" id="outside-legend"><span style="--color:#688bae">적경·적위 격자</span><span style="--color:#72e7ef">천구의 적도</span><span style="--color:#ffca73">황도</span><span style="--color:#c7abff">천구의 양극</span></div>
@@ -96,6 +100,10 @@ const skyLayout = document.querySelector('#sky-layout');
 const skyReadout = document.querySelector('#sky-readout');
 const skyTime = document.querySelector('#sky-time');
 const skyAngles = ['#sky-sun','#sky-moon'].map(id => document.querySelector(id));
+const riseSetLabels = ['#sun-rise-set','#moon-rise-set'].map(id => document.querySelector(id));
+const eventClock = new Intl.DateTimeFormat('ko-KR',{
+  timeZone:'Asia/Seoul',hour:'2-digit',minute:'2-digit',hourCycle:'h23'
+});
 const skyClock = new Intl.DateTimeFormat('ko-KR',{
   timeZone:'Asia/Seoul', year:'numeric', month:'2-digit', day:'2-digit',
   hour:'2-digit', minute:'2-digit', second:'2-digit', hour12:false
@@ -420,16 +428,20 @@ document.querySelector('#time-now').onclick = () => {
 };
 const trackStep = 5*60000;
 
-function trackHorizonCrossing(bodyIndex, start, end, startsAbove) {
-  let position;
+function findCrossing(start, end, startsAbove, heightAt) {
   while (end-start > 1000) {
-    const time = new Date(Math.floor((start+end)/2));
-    const body = solarAndLunarPositions(time)[bodyIndex];
-    position = horizontalCoordinates(body.point,horizonFrame(time),body.distanceInEarthRadii);
-    if ((position.altitude >= 0) === startsAbove) start = time.getTime();
-    else end = time.getTime();
+    const middle = Math.floor((start+end)/2);
+    if ((heightAt(middle) >= 0) === startsAbove) start = middle;
+    else end = middle;
   }
-  return {...position,altitude:0};
+  return Math.floor((start+end)/2);
+}
+
+function riseSetHeight(body, index, altitude) {
+  // Standard horizon refraction plus the apparent radius of the upper limb.
+  // Lunar altitude already includes topocentric parallax.
+  const radius = index === 0 ? 16/60 : Math.asin(0.2725/body.distanceInEarthRadii)/rad;
+  return altitude+34/60+radius;
 }
 
 function refreshDailyTracks(now) {
@@ -439,6 +451,8 @@ function refreshDailyTracks(now) {
   const key = [start,latitude,longitude].join('/');
   if (key === dailyTrackKey) return;
   dailyTracks = [[],[]];
+  const previousHeights = [];
+  const events = [{rise:[],set:[]},{rise:[],set:[]}];
   const moonTrackDuration = day+3600000;
   for (let offset=0; offset<=moonTrackDuration; offset+=trackStep) {
     const time = new Date(start+offset);
@@ -448,13 +462,39 @@ function refreshDailyTracks(now) {
       const track = dailyTracks[index];
       const position = horizontalCoordinates(body.point,frame,body.distanceInEarthRadii);
       const previous = track.at(-1);
+      const positionAt = ms => {
+        const date = new Date(ms);
+        const target = solarAndLunarPositions(date)[index];
+        const point = horizontalCoordinates(target.point,horizonFrame(date),target.distanceInEarthRadii);
+        return {target,point};
+      };
       if (previous && previous.altitude*position.altitude < 0) {
-        track.push(trackHorizonCrossing(index,start+offset-trackStep,start+offset,previous.altitude > 0));
+        const crossing = findCrossing(start+offset-trackStep,start+offset,previous.altitude > 0,
+          ms => positionAt(ms).point.altitude);
+        track.push({...positionAt(crossing).point,altitude:0});
       }
       track.push(position);
+      if (offset <= day) {
+        const height = riseSetHeight(body,index,position.altitude);
+        if (offset && (previousHeights[index] >= 0) !== (height >= 0)) {
+          const crossing = findCrossing(start+offset-trackStep,start+offset,previousHeights[index] >= 0,ms => {
+            const {target,point} = positionAt(ms);
+            return riseSetHeight(target,index,point.altitude);
+          });
+          if (offset < day || height !== 0) {
+            events[index][height >= 0 ? 'rise' : 'set'].push(eventClock.format(crossing));
+          }
+        }
+        previousHeights[index] = height;
+      }
       if (offset === day/2 && index === 0) baseAzimuth = body.dec <= latitude ? 180 : 0;
     });
   }
+  events.forEach(({rise,set},index) => {
+    const prefix = index === 0 ? '일' : '월';
+    riseSetLabels[index].textContent = prefix+'출 '+(rise.join(', ') || '없음')+
+      ' · '+prefix+'몰 '+(set.join(', ') || '없음');
+  });
   dailyTrackKey = key;
 }
 function refreshBodies() {
