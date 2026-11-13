@@ -132,7 +132,8 @@ const showStars = document.querySelector('#show-stars');
 const planetRange = document.querySelector('#planet-range');
 let extraObjects = [];
 let frontObjects = [];
-const outsideNotes = ['#object-controls','#outside-legend','#outside-drag','#outside-note','#keys'].map(id => document.querySelector(id));
+let localObjects = [];
+const outsideNotes = ['#outside-legend','#outside-drag','#outside-note','#keys'].map(id => document.querySelector(id));
 const insideNote = document.querySelector('#inside-note');
 let latitude = latitudeInput.valueAsNumber;
 let longitude = longitudeInput.valueAsNumber;
@@ -281,30 +282,37 @@ function formatHorizontal({altitude,azimuth}) {
   };
 }
 const insideMarkerRadius = 14;
+function localTargetAt(x,y,touch = false) {
+  let target;
+  let nearest = Infinity;
+  for (const body of [...localObjects,...bodies]) {
+    const [markerX,markerY] = projectSky(body.horizontal);
+    const distance = Math.hypot(x-markerX,y-markerY);
+    const hitRadius = (body.size ?? insideMarkerRadius)+(touch ? 10 : 5);
+    if (distance <= hitRadius && distance <= nearest) {
+      target = body;
+      nearest = distance;
+    }
+  }
+  return target;
+}
 function updateCoordinates() {
-  if ((!pointer && tappedBody === null) || !radius) {
+  const selected = tappedBody === null ? null :
+    [...bodies,...localObjects].find(body => body.name === tappedBody);
+  if ((!pointer && !selected) || !radius) {
     coordinates.hidden = true;
     positionDot.hidden = true;
     return;
   }
   const box = canvas.getBoundingClientRect();
-  const [x,y] = tappedBody === null
-    ? [pointer.x-box.left,pointer.y-box.top]
-    : projectSky(bodies[tappedBody].horizontal);
+  const [x,y] = selected
+    ? projectSky(selected.horizontal)
+    : [pointer.x-box.left,pointer.y-box.top];
   let target;
   let position;
   if (x >= 0 && x < width && y >= 0 && y < height) {
     if (insideMode) {
-      let nearest = insideMarkerRadius+5;
-      for (const body of bodies) {
-        const [markerX,markerY] = projectSky(body.horizontal);
-        const distance = Math.hypot(x-markerX,y-markerY);
-        if (distance <= nearest) {
-          target = body;
-          nearest = distance;
-        }
-      }
-      if (tappedBody !== null) target = bodies[tappedBody];
+      target = selected ?? localTargetAt(x,y);
       position = target?.horizontal;
     } else {
       let nearest = 10;
@@ -327,8 +335,12 @@ function updateCoordinates() {
 
   if (insideMode) {
     const {altText,azText} = formatHorizontal(position);
+    const detail = target.description
+      ? target.description+'\n'+(bodies[0].horizontal.altitude >= 0
+        ? '낮 하늘 · 육안 관측은 어려울 수 있음' : '지평선 위 · 육안 가시성은 관측 조건에 따라 달라짐')
+      : riseSetTimes[bodies.indexOf(target)];
     coordinates.textContent = target.name+'\n기하학적 고도  '+formatHorizontal(target.geometric).altText+
-      '\n겉보기 고도  '+altText+'\n방위각  '+azText+'\n'+riseSetTimes[bodies.indexOf(target)];
+      '\n겉보기 고도  '+altText+'\n방위각  '+azText+'\n'+detail;
   } else {
     const {raText,decText} = formatCoordinates(position);
     coordinates.textContent = (target ? target.name+'\n'+(target.description ? target.description+'\n' : '') : '')+
@@ -629,6 +641,7 @@ function refreshDailyTracks(now) {
 function refreshBodies() {
   const now = new Date(simulatedTime());
   bodies = solarAndLunarPositions(now);
+  extraObjects = additionalObjects(now);
   if (insideMode) {
     localFrame = horizonFrame(now);
     refreshDailyTracks(now);
@@ -641,8 +654,14 @@ function refreshBodies() {
       const lower = apparentAltitude(body.geometric.altitude-angularRadius(body,index));
       body.visibleFraction = Math.max(0,Math.min(1,upper/(upper-lower)));
     });
+    localObjects = extraObjects.map(object => {
+      const geometric = horizontalCoordinates(object.point,localFrame);
+      return {...object,geometric,horizontal:apparentPosition(geometric)};
+    }).filter(object => object.horizontal.altitude >= 0);
+    if (tappedBody !== null && ![...bodies,...localObjects].some(body => body.name === tappedBody)) {
+      tappedBody = null;
+    }
   } else {
-    extraObjects = additionalObjects(now);
     ephemerisLabel.textContent = bodies.map(body => {
       const {raText,decText} = formatCoordinates(body);
       return body.name+' '+raText+' / '+decText;
@@ -886,7 +905,26 @@ function drawSky() {
     ctx.fillText(name,centerX+(x-centerX)*scale,centerY+(y-centerY)*scale);
   }
   drawObserver();
+  drawObjectPoints(localObjects.map(object => ({...object,screen:projectSky(object.horizontal)})),
+    markers.map(marker => marker.screen));
   drawBodies(markers);
+}
+function drawObjectPoints(objects,occupied) {
+  ctx.font = '600 11px system-ui';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'middle';
+  for (const {name,color,size,screen:[x,y]} of objects) {
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.arc(x,y,size,0,2*Math.PI);
+    ctx.fill();
+    if (occupied.some(([px,py]) => Math.abs(px-x)<52 && Math.abs(py-y)<14)) continue;
+    ctx.strokeStyle = '#0a1525';
+    ctx.lineWidth = 3;
+    ctx.strokeText(name,x+7,y);
+    ctx.fillText(name,x+7,y);
+    occupied.push([x,y]);
+  }
 }
 function draw() {
   if (!width || !height) return;
@@ -934,22 +972,7 @@ function draw() {
   ctx.globalAlpha = 1;
   frontObjects = extraObjects.map(object => ({...object,screen:project(object.point)}))
     .filter(({screen:[x,y,depth]}) => depth >= 0 && x >= 0 && x < width && y >= 0 && y < height);
-  ctx.font = '600 11px system-ui';
-  ctx.textAlign = 'left';
-  ctx.textBaseline = 'middle';
-  const occupied = bodies.map(body => project(body.point));
-  for (const {name,color,size,screen:[x,y]} of frontObjects) {
-    ctx.fillStyle = color;
-    ctx.beginPath();
-    ctx.arc(x,y,size,0,2*Math.PI);
-    ctx.fill();
-    if (occupied.some(([px,py]) => Math.abs(px-x)<52 && Math.abs(py-y)<14)) continue;
-    ctx.strokeStyle = '#0a1525';
-    ctx.lineWidth = 3;
-    ctx.strokeText(name,x+7,y);
-    ctx.fillText(name,x+7,y);
-    occupied.push([x,y]);
-  }
+  drawObjectPoints(frontObjects,bodies.map(body => project(body.point)));
   drawBodies(bodies.map(body => ({...body,screen:project(body.point)})));
   updateCoordinates();
 }
@@ -1001,12 +1024,8 @@ canvas.addEventListener('pointermove', event => {
 canvas.addEventListener('pointerup',event => {
   if (!insideMode || event.pointerType !== 'touch') return;
   const box = canvas.getBoundingClientRect();
-  const index = bodies.reduce((closest,body,i) => {
-    const [x,y] = projectSky(body.horizontal);
-    const distance = Math.hypot(event.clientX-box.left-x,event.clientY-box.top-y);
-    return distance <= closest.distance ? {index:i,distance} : closest;
-  },{index:null,distance:insideMarkerRadius+10}).index;
-  tappedBody = tappedBody === index ? null : index;
+  const name = localTargetAt(event.clientX-box.left,event.clientY-box.top,true)?.name ?? null;
+  tappedBody = tappedBody === name ? null : name;
   pointer = null;
   updateCoordinates();
 });
@@ -1158,7 +1177,7 @@ function selectView(isInside) {
   insideNote.hidden = !insideMode;
   for (const note of outsideNotes) note.hidden = insideMode;
   help.textContent = insideMode
-    ? '태양·달에 마우스를 올리거나 탭하면 방위각, 고도, 출몰 시각을 볼 수 있습니다.'
+    ? '지평선 위의 행성·별을 점으로 표시합니다. 천체에 마우스를 올리거나 탭하면 방위각·고도를 볼 수 있고, 해·달은 출몰 시각도 표시합니다.'
     : outsideHelp;
   refreshBodies();
 }
