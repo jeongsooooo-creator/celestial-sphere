@@ -189,21 +189,22 @@ const starPhoto = document.querySelector('#star-photo');
 const starCredit = document.querySelector('#star-credit');
 const starPhotos = new Map([
   ['시리우스',{
-    url:'https://upload.wikimedia.org/wikipedia/commons/f/f3/Sirius_A_and_B_Hubble_photo.jpg',
+    url:'./assets/stars/sirius.jpg',
     alt:'허블 우주망원경이 촬영한 시리우스 A와 B',
     credit:'NASA · ESA · STScI'
   }],
   ['북극성',{
-    url:'https://upload.wikimedia.org/wikipedia/commons/7/77/Polaris_system.jpg',
+    url:'./assets/stars/polaris.jpg',
     alt:'허블 우주망원경의 북극성 다중성계 관측 이미지',
     credit:'NASA · ESA · N. Evans · H. Bond'
   }],
   ['베텔게우스',{
-    url:'https://cdn.eso.org/images/large/potw1726a.jpg',
+    url:'./assets/stars/betelgeuse.jpg',
     alt:'ALMA 전파망원경으로 관측한 베텔게우스',
     credit:'ALMA (ESO/NAOJ/NRAO)/E. O’Gorman/P. Kervella'
   }]
 ]);
+starPhoto.addEventListener('load',updateCoordinates);
 starPhoto.addEventListener('error',() => {
   starPhoto.hidden = true;
   starCredit.hidden = true;
@@ -216,15 +217,15 @@ function updateStarPhoto(name) {
     return;
   }
   if (starPhoto.getAttribute('src') === photo.url) {
-    starPhoto.hidden = starPhoto.complete && starPhoto.naturalWidth === 0;
+    starPhoto.hidden = !starPhoto.complete || starPhoto.naturalWidth === 0;
     starCredit.hidden = starPhoto.hidden;
     return;
   }
   starPhoto.alt = photo.alt;
   starPhoto.src = photo.url;
   starCredit.textContent = photo.credit;
-  starPhoto.hidden = false;
-  starCredit.hidden = false;
+  starPhoto.hidden = !starPhoto.complete || starPhoto.naturalWidth === 0;
+  starCredit.hidden = starPhoto.hidden;
 }
 const rad = Math.PI / 180;
 const skyElevationDegrees = 20;
