@@ -81,7 +81,7 @@ small{display:block;color:#92a9c1;margin-top:7px}
 <button type="button" id="outside-mode" aria-pressed="true">천구 밖에서 보기</button>
 <button type="button" id="inside-mode" aria-pressed="false">관측지 하늘 보기</button>
 </div></div></header>
-<p id="help">드래그로 회전하고, 휠로 확대·축소하세요. 태양·달이나 천구 앞면의 행성·별에 마우스를 올리면 해당 천체의 적경·적위가 표시됩니다.</p>
+<p id="help">드래그로 회전하고, 휠로 확대·축소하세요. 태양·달이나 천구 앞면의 행성·별에 마우스를 올리거나 탭하면 해당 천체의 적경·적위가 표시됩니다.</p>
 <div class="setup-controls">
 <div class="time-controls" role="group" aria-label="시뮬레이션 날짜와 시간">
 <button type="button" id="day-back">−1일</button>
@@ -330,9 +330,21 @@ function localTargetAt(x,y,touch = false) {
   }
   return target;
 }
+function exteriorTargetAt(x,y,touch = false) {
+  let target;
+  let nearest = touch ? 19 : 10;
+  for (const object of [...frontObjects,...bodies.map(body => ({...body,screen:project(body.point)}))]) {
+    const distance = Math.hypot(x-object.screen[0],y-object.screen[1]);
+    if (distance <= nearest) {
+      target = object;
+      nearest = distance;
+    }
+  }
+  return target;
+}
 function updateCoordinates() {
-  const selected = tappedBody === null ? null :
-    [...bodies,...localObjects].find(body => body.name === tappedBody);
+  const selected = tappedBody === null ? null : (insideMode
+    ? [...bodies,...localObjects] : [...bodies,...frontObjects]).find(body => body.name === tappedBody);
   if ((!pointer && !selected) || !radius) {
     coordinates.hidden = true;
     positionDot.hidden = true;
@@ -340,7 +352,7 @@ function updateCoordinates() {
   }
   const box = canvas.getBoundingClientRect();
   const [x,y] = selected
-    ? projectSky(selected.horizontal)
+    ? (insideMode ? projectSky(selected.horizontal) : project(selected.point))
     : [pointer.x-box.left,pointer.y-box.top];
   let target;
   let position;
@@ -349,14 +361,7 @@ function updateCoordinates() {
       target = selected ?? localTargetAt(x,y);
       position = target?.horizontal;
     } else {
-      let nearest = 10;
-      for (const object of [...frontObjects,...bodies.map(body => ({...body,screen:project(body.point)}))]) {
-        const distance = Math.hypot(x-object.screen[0],y-object.screen[1]);
-        if (distance <= nearest) {
-          target = object;
-          nearest = distance;
-        }
-      }
+      target = selected ?? exteriorTargetAt(x,y);
       position = target ?? celestialAt(x,y);
     }
   }
@@ -1029,6 +1034,7 @@ function changeZoom(value) {
 const canvasTouches = new Map();
 let pinch = null;
 let pinchUsed = false;
+let touchStart = null;
 
 function pinchDistance() {
   const [first,second] = canvasTouches.values();
@@ -1036,7 +1042,10 @@ function pinchDistance() {
 }
 canvas.addEventListener('pointerdown', event => {
   if (compactScreen.matches && event.pointerType === 'touch') {
-    if (canvasTouches.size === 0) pinchUsed = false;
+    if (canvasTouches.size === 0) {
+      pinchUsed = false;
+      touchStart = {x:event.clientX,y:event.clientY};
+    }
     canvasTouches.set(event.pointerId,{x:event.clientX,y:event.clientY});
     canvas.setPointerCapture(event.pointerId);
     if (canvasTouches.size >= 2) {
@@ -1086,9 +1095,15 @@ canvas.addEventListener('pointermove', event => {
   draw();
 });
 canvas.addEventListener('pointerup',event => {
-  if (!insideMode || event.pointerType !== 'touch' || (pinchUsed && canvasTouches.has(event.pointerId))) return;
+  if (event.pointerType !== 'touch') return;
+  const tracked = canvasTouches.has(event.pointerId);
+  if (!tracked && !insideMode) return;
+  if (tracked && (pinchUsed || Math.hypot(event.clientX-touchStart.x,event.clientY-touchStart.y) > 10)) return;
   const box = canvas.getBoundingClientRect();
-  const name = localTargetAt(event.clientX-box.left,event.clientY-box.top,true)?.name ?? null;
+  const x = event.clientX-box.left;
+  const y = event.clientY-box.top;
+  const target = insideMode ? localTargetAt(x,y,true) : exteriorTargetAt(x,y,true);
+  const name = target?.name ?? null;
   tappedBody = tappedBody === name ? null : name;
   pointer = null;
   updateCoordinates();
