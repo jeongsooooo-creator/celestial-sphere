@@ -61,10 +61,10 @@ small{display:block;color:#92a9c1;margin-top:7px}
   .title-row h1{flex:none;font-size:clamp(16px,5vw,23px);margin:6px 0}
   .title-row .view-controls{flex-wrap:nowrap;gap:4px;margin:0 0 0 auto}
   .view-controls button{font-size:clamp(10px,3vw,13px);padding:4px 5px;white-space:nowrap}
-  .simulation-clock{order:1;margin:2px 0;font-size:14px}
+  .simulation-clock{order:1;text-align:center;margin:2px 0;font-size:14px}
   .sky-layout{order:2;flex:none}
   .stage{flex:none;height:clamp(250px,110vw,560px);border-radius:12px}
-  .controls{top:6px;left:6px;right:6px;gap:4px}
+  .controls{top:6px;justify-content:center;left:6px;right:6px;gap:4px}
   .controls button,.controls output{font-size:12px;padding:3px 7px}
   .controls output{min-width:48px}
   main > #help{order:3;margin:8px 0 6px}
@@ -125,6 +125,7 @@ small{display:block;color:#92a9c1;margin-top:7px}
 const canvas = document.querySelector('canvas');
 const ctx = canvas.getContext('2d');
 const stage = canvas.parentElement;
+const compactScreen = window.matchMedia('(max-width:600px)');
 const preventMultiTouchZoom = event => {
   if (event.touches.length > 1 && event.cancelable) event.preventDefault();
 };
@@ -959,8 +960,7 @@ function draw() {
   if (!width || !height) return;
   centerX = width / 2;
   centerY = height / 2 + 5;
-  const compactLayout = window.matchMedia('(max-width:600px)').matches;
-  const radiusRatio = compactLayout ? 0.44 : 0.355;
+  const radiusRatio = compactScreen.matches ? 0.44 : 0.355;
   radius = Math.min(width,height)*radiusRatio*zoom;
   ctx.clearRect(0,0,width,height);
   ctx.beginPath();
@@ -1022,7 +1022,31 @@ function changeZoom(value) {
   zoomLabel.value = Math.round(zoom*100) + '%';
   draw();
 }
+const canvasTouches = new Map();
+let pinch = null;
+let pinchUsed = false;
+
+function pinchDistance() {
+  const [first,second] = canvasTouches.values();
+  return Math.hypot(first.x-second.x,first.y-second.y);
+}
 canvas.addEventListener('pointerdown', event => {
+  if (compactScreen.matches && event.pointerType === 'touch') {
+    if (canvasTouches.size === 0) pinchUsed = false;
+    canvasTouches.set(event.pointerId,{x:event.clientX,y:event.clientY});
+    canvas.setPointerCapture(event.pointerId);
+    if (canvasTouches.size >= 2) {
+      pinchUsed = true;
+      drag = null;
+      pointer = null;
+      tappedBody = null;
+      updateCoordinates();
+      if (canvasTouches.size === 2) {
+        pinch = {distance:Math.max(1,pinchDistance()),zoom};
+      }
+      return;
+    }
+  }
   if (insideMode || event.button !== 0 || drag) return;
   const box = canvas.getBoundingClientRect();
   const start = celestialAt(event.clientX-box.left,event.clientY-box.top);
@@ -1036,6 +1060,11 @@ canvas.addEventListener('pointerdown', event => {
   };
 });
 canvas.addEventListener('pointermove', event => {
+  if (canvasTouches.has(event.pointerId)) {
+    canvasTouches.set(event.pointerId,{x:event.clientX,y:event.clientY});
+    if (pinch) changeZoom(pinch.zoom*pinchDistance()/pinch.distance);
+    if (pinchUsed) return;
+  }
   if (event.pointerType !== 'touch') {
     tappedBody = null;
     pointer = {x:event.clientX,y:event.clientY};
@@ -1053,7 +1082,7 @@ canvas.addEventListener('pointermove', event => {
   draw();
 });
 canvas.addEventListener('pointerup',event => {
-  if (!insideMode || event.pointerType !== 'touch') return;
+  if (!insideMode || event.pointerType !== 'touch' || (pinchUsed && canvasTouches.has(event.pointerId))) return;
   const box = canvas.getBoundingClientRect();
   const name = localTargetAt(event.clientX-box.left,event.clientY-box.top,true)?.name ?? null;
   tappedBody = tappedBody === name ? null : name;
@@ -1065,7 +1094,12 @@ canvas.addEventListener('pointerleave', () => {
   updateCoordinates();
 });
 for (const type of ['pointerup','pointercancel','lostpointercapture']) {
-  canvas.addEventListener(type,event => { if (drag?.id === event.pointerId) drag = null; });
+  canvas.addEventListener(type,event => {
+    if (drag?.id === event.pointerId) drag = null;
+    if (!canvasTouches.delete(event.pointerId)) return;
+    pinch = canvasTouches.size >= 2
+      ? {distance:Math.max(1,pinchDistance()),zoom} : null;
+  });
 }
 canvas.addEventListener('wheel', event => {
   event.preventDefault();
