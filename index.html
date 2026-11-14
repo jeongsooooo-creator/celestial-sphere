@@ -56,6 +56,7 @@ output{font-variant-numeric:tabular-nums;min-width:64px;text-align:center}
 details{font-size:12px;color:#a9bfd6;margin-top:4px}
 small{display:block;color:#92a9c1;margin-top:7px}
 @media (max-width:600px){
+  html,body{touch-action:pan-x pan-y}
   main{height:auto;min-height:100svh;padding:6px 8px 12px}
   .title-row{flex-wrap:nowrap;gap:4px}
   .title-row h1{flex:none;font-size:clamp(16px,5vw,23px);margin:6px 0}
@@ -129,13 +130,16 @@ const compactScreen = window.matchMedia('(max-width:600px)');
 const preventMultiTouchZoom = event => {
   if (event.touches.length > 1 && event.cancelable) event.preventDefault();
 };
+document.addEventListener('touchmove',event => {
+  if (compactScreen.matches) preventMultiTouchZoom(event);
+},{passive:false});
 for (const type of ['touchstart','touchmove']) {
   stage.addEventListener(type,preventMultiTouchZoom,{passive:false});
 }
 // Safari also reports pinch gestures through its own gesture events.
 for (const type of ['gesturestart','gesturechange']) {
-  stage.addEventListener(type,event => {
-    if (event.cancelable) event.preventDefault();
+  document.addEventListener(type,event => {
+    if ((compactScreen.matches || stage.contains(event.target)) && event.cancelable) event.preventDefault();
   },{passive:false});
 }
 const ephemerisLabel = document.querySelector('#ephemeris');
