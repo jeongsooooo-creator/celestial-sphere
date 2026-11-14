@@ -44,6 +44,8 @@ canvas{position:absolute;inset:0;display:block;width:100%;height:100%;max-height
 canvas:active{cursor:grabbing}
 .position-dot{position:absolute;z-index:1;width:9px;height:9px;border:1px solid #0a1525;border-radius:50%;background:#fff;box-shadow:0 0 0 2px #72e7ef;transform:translate(-50%,-50%);pointer-events:none}
 .coordinates{position:absolute;z-index:1;pointer-events:none;padding:6px 10px;border:1px solid #426385;border-radius:7px;background:#0a1525;color:#eaf4ff;font-size:13px;font-variant-numeric:tabular-nums;white-space:pre-line;max-width:calc(100% - 12px);overflow-wrap:anywhere}
+.tooltip-photo{display:block;width:min(150px,45vw);height:min(105px,20svh);object-fit:contain;margin:5px 0 0;background:#080e1a;border-radius:4px}
+.tooltip-credit{display:block;max-width:155px;margin:3px 0 0;font-size:10px;line-height:1.25;color:#a9bfd6}
 .controls{position:absolute;left:12px;right:12px;top:12px;display:flex;justify-content:flex-end;flex-wrap:wrap;gap:6px;align-items:center;pointer-events:none}
 .controls button{pointer-events:auto}
 button,output{padding:4px 10px;color:inherit;background:#111f33;border:1px solid #3b506b;border-radius:7px;font:inherit}
@@ -110,7 +112,11 @@ small{display:block;color:#92a9c1;margin-top:7px}
 <div class="stage">
 <canvas tabindex="0" aria-label="회전 가능한 3D 천구" aria-describedby="help keys"></canvas>
 <div class="position-dot" id="position-dot" aria-hidden="true" hidden></div>
-<div class="coordinates" id="coordinates" hidden></div>
+<div class="coordinates" id="coordinates" hidden>
+<div id="coordinate-text"></div>
+<img class="tooltip-photo" id="star-photo" alt="" referrerpolicy="no-referrer" hidden>
+<small class="tooltip-credit" id="star-credit" hidden></small>
+</div>
 <div class="controls"><button type="button" id="turn-left" aria-label="왼쪽으로 회전" title="왼쪽으로 회전">↶</button><button type="button" id="turn-right" aria-label="오른쪽으로 회전" title="오른쪽으로 회전">↷</button><button type="button" id="out" aria-label="축소">−</button><output id="zoom" aria-label="확대율">100%</output><button type="button" id="in" aria-label="확대">+</button><button type="button" id="reset">초기화</button></div>
 </div>
 </div>
@@ -178,6 +184,48 @@ let baseAzimuth = 180;
 const zoomLabel = document.querySelector('#zoom');
 const positionDot = document.querySelector('#position-dot');
 const coordinates = document.querySelector('#coordinates');
+const coordinateText = document.querySelector('#coordinate-text');
+const starPhoto = document.querySelector('#star-photo');
+const starCredit = document.querySelector('#star-credit');
+const starPhotos = new Map([
+  ['시리우스',{
+    url:'https://upload.wikimedia.org/wikipedia/commons/f/f3/Sirius_A_and_B_Hubble_photo.jpg',
+    alt:'허블 우주망원경이 촬영한 시리우스 A와 B',
+    credit:'NASA · ESA · STScI'
+  }],
+  ['북극성',{
+    url:'https://upload.wikimedia.org/wikipedia/commons/7/77/Polaris_system.jpg',
+    alt:'허블 우주망원경의 북극성 다중성계 관측 이미지',
+    credit:'NASA · ESA · N. Evans · H. Bond'
+  }],
+  ['베텔게우스',{
+    url:'https://cdn.eso.org/images/large/potw1726a.jpg',
+    alt:'ALMA 전파망원경으로 관측한 베텔게우스',
+    credit:'ALMA (ESO/NAOJ/NRAO)/E. O’Gorman/P. Kervella'
+  }]
+]);
+starPhoto.addEventListener('error',() => {
+  starPhoto.hidden = true;
+  starCredit.hidden = true;
+});
+function updateStarPhoto(name) {
+  const photo = starPhotos.get(name);
+  if (!photo) {
+    starPhoto.hidden = true;
+    starCredit.hidden = true;
+    return;
+  }
+  if (starPhoto.getAttribute('src') === photo.url) {
+    starPhoto.hidden = starPhoto.complete && starPhoto.naturalWidth === 0;
+    starCredit.hidden = starPhoto.hidden;
+    return;
+  }
+  starPhoto.alt = photo.alt;
+  starPhoto.src = photo.url;
+  starCredit.textContent = photo.credit;
+  starPhoto.hidden = false;
+  starCredit.hidden = false;
+}
 const rad = Math.PI / 180;
 const skyElevationDegrees = 20;
 const skySin = Math.sin(skyElevationDegrees*rad);
@@ -378,13 +426,14 @@ function updateCoordinates() {
       ? target.description+'\n'+(bodies[0].horizontal.altitude >= 0
         ? '낮 하늘 · 육안 관측은 어려울 수 있음' : '지평선 위 · 육안 가시성은 관측 조건에 따라 달라짐')
       : riseSetTimes[bodies.indexOf(target)];
-    coordinates.textContent = target.name+'\n기하학적 고도  '+formatHorizontal(target.geometric).altText+
+    coordinateText.textContent = target.name+'\n기하학적 고도  '+formatHorizontal(target.geometric).altText+
       '\n겉보기 고도  '+altText+'\n방위각  '+azText+'\n'+detail;
   } else {
     const {raText,decText} = formatCoordinates(position);
-    coordinates.textContent = (target ? target.name+'\n'+(target.description ? target.description+'\n' : '') : '')+
+    coordinateText.textContent = (target ? target.name+'\n'+(target.description ? target.description+'\n' : '') : '')+
       '적경 (RA)  '+raText+'\n적위 (Dec)  '+decText;
   }
+  updateStarPhoto(target?.name);
   const tipWidth = coordinates.offsetWidth;
   const tipHeight = coordinates.offsetHeight;
   const left = x+14+tipWidth <= width-6 ? x+14 : x-tipWidth-14;
